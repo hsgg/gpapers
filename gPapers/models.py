@@ -89,6 +89,7 @@ class Paper(models.Model):
     sponsors = models.ManyToManyField(Sponsor)
     references = models.ManyToManyField(Reference)
     full_text = models.FileField(upload_to=os.path.join('papers','%Y','%m'))
+    rating = models.IntegerField(default=0)
     imported = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     

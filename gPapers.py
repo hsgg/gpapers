@@ -112,8 +112,11 @@ def import_acm_citation(params):
         print thread.get_ident(), 'parsing...'
         soup = BeautifulSoup.BeautifulSoup( params['data'] )
         
+        title = []
+        for node in soup.find('a', attrs={'name':'FullText'}).parent.parent.parent.find('td').findAll('strong'):
+            title.append(node.string)
         paper, created = Paper.objects.get_or_create(
-            title = html_strip(soup.find('title').string),
+            title = html_strip(''.join(title)),
             doi = str(soup.find('form', attrs={'name':'popbinder'}).nextSibling.table.findAll('tr')[-1].findAll('td')[-1].a.string),
         )
         if created: paper.save()
@@ -157,24 +160,31 @@ def import_acm_citation(params):
         
         for node in soup.find('div', attrs={'class':'authors'}).findAll('tr'):
             td1, td2 = node.findAll('td')
-            org_and_location = td2.find('small').string
-            author, created = Author.objects.get_or_create(
-                name = html_strip( td1.find('a').string ),
-                organization = html_strip( org_and_location[0:org_and_location.index(',')] ),
-                location = html_strip( org_and_location[org_and_location.index(',')+1:] ),
-            )
+            org_and_location = td2.find('small')
+            if org_and_location:
+                author, created = Author.objects.get_or_create(
+                    name = html_strip( td1.find('a').string ),
+                    organization = html_strip( org_and_location.string[0:org_and_location.string.index(',')] ),
+                    location = html_strip( org_and_location.string[org_and_location.string.index(',')+1:] ),
+                )
+            else:
+                author, created = Author.objects.get_or_create(
+                    name = html_strip( td1.find('a').string ),
+                )
             if created: author.save()
             paper.authors.add( author )
             
-        for node in soup.find('div', attrs={'class':'sponsors'}).contents:
-            if isinstance( node, BeautifulSoup.NavigableString ):
-                sponsor_name = html_strip( node.replace(':','') )
-                if sponsor_name:
-                    sponsor, created = Sponsor.objects.get_or_create(
-                        name = sponsor_name,
-                    )
-                    if created: sponsor.save()
-                    paper.sponsors.add( sponsor )
+        node = soup.find('div', attrs={'class':'sponsors'})
+        if node:
+            for node in node.contents:
+                if isinstance( node, BeautifulSoup.NavigableString ):
+                    sponsor_name = html_strip( node.replace(':','') )
+                    if sponsor_name:
+                        sponsor, created = Sponsor.objects.get_or_create(
+                            name = sponsor_name,
+                        )
+                        if created: sponsor.save()
+                        paper.sponsors.add( sponsor )
                     
         for node in soup.find('a', attrs={'name':'references'}).parent.findNextSibling('table').findAll('tr'):
             node = node.findAll('td')[2].div
@@ -200,19 +210,20 @@ def import_acm_citation(params):
                 paper.references.add( reference )
         
         
-        node = soup.find('a', attrs={'name':'FullText'})
-        if node:
-            file_url = BASE_URL +'/'+ node['href']
-            print thread.get_ident(), 'downloading paper from', file_url
-            params = openanything.fetch(file_url)
-            if params['status']==200 or params['status']==302 :
-                ext = params['url'][ params['url'].rfind('.')+1:]
-                if not ext or len(ext)>5:
-                    ext = 'pdf'
-                paper.save_full_text_file( defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params['data'] )
-                paper.save()
-            else:
-                print thread.get_ident(), 'error downloading paper:', params
+        for node in soup.findAll('a', attrs={'name':'FullText'}):
+            if node.contents[1]=='Pdf':
+                file_url = BASE_URL +'/'+ node['href']
+                print thread.get_ident(), 'downloading paper from', file_url
+                params = openanything.fetch(file_url)
+                if params['status']==200 or params['status']==302 :
+                    ext = params['url'][ params['url'].rfind('.')+1:]
+                    if not ext or len(ext)>5:
+                        ext = 'pdf'
+                    paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params['data'] )
+                    paper.save()
+                    break
+                else:
+                    print thread.get_ident(), 'error downloading paper:', params
         
         print thread.get_ident(), 'paper =', paper
     except:
@@ -313,9 +324,12 @@ class MainGUI:
         self.ui = gtk.glade.XML(RUN_FROM_DIR + 'ui.glade')
         main_window = self.ui.get_widget('main_window')
         main_window.connect("delete-event", gtk.main_quit )
-        main_window.show()
         self.init_menu()
         self.init_search_box()
+        self.init_left_pane()
+        self.init_middle_top_pane()
+        self.refresh_left_pane()        
+        main_window.show()
 
     def init_menu(self):
         self.ui.get_widget('menuitem_quit').connect('activate', gtk.main_quit)
@@ -327,10 +341,69 @@ class MainGUI:
 #        set_model_from_list( self.ui.get_widget('search_source'), ['My Library','ACM','IEEE'] )
 #        self.ui.get_widget('search_source').set_active(0)
         
-    def init_(self):
-        pass
+    def init_left_pane(self):
+        left_pane = self.ui.get_widget('left_pane')
+        # name, icon
+        self.left_pane_model = gtk.TreeStore( str, gtk.gdk.Pixbuf, )
+        left_pane.set_model( self.left_pane_model )
+        
+        column = gtk.TreeViewColumn()
+        left_pane.append_column(column)
+        renderer = gtk.CellRendererPixbuf()
+        column.pack_start(renderer, expand=False)
+        column.add_attribute(renderer, 'pixbuf', 1)
+        renderer = gtk.CellRendererText()
+        column.pack_start(renderer, expand=True)
+        column.add_attribute(renderer, 'markup', 0)
+        
+        left_pane.connect('cursor-changed', self.select_left_pane_item)
+        
+    def refresh_left_pane(self):
+        left_pane = self.ui.get_widget('left_pane')
+        self.left_pane_model.clear()
+        self.left_pane_model.append( None, ( '<b>My Library</b>', left_pane.render_icon(gtk.STOCK_HOME, gtk.ICON_SIZE_MENU) ) )
+#        self.left_pane_model.append( self.left_pane_model.get_iter((0,)), ( 'My Library', ) )
+        self.left_pane_model.append( None, ( 'ACM', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_acm.ico' ) ) ) )
+        self.left_pane_model.append( None, ( 'IEEE', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_ieee.ico' ) )  ) )
+        self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) )  ) )
 
+    def select_left_pane_item(self, treeview):
+        selection = treeview.get_selection()
+        liststore, rows = selection.get_selected_rows()
+        print rows[0]
+        print liststore[rows[0]][0]
+        self.ui.get_widget('middle_pane_label').set_markup( liststore[rows[0]][0] )
+        
+        if rows[0]==(0,):
+            self.refresh_middle_pane_from_my_library()
 
+    def init_middle_top_pane(self):
+        middle_top_pane = self.ui.get_widget('middle_top_pane')
+        # authors, title, journal, year
+        self.middle_top_pane_model = gtk.ListStore( str, str, str, str, )
+        middle_top_pane.set_model( self.middle_top_pane_model )
+        middle_top_pane.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
+        
+        middle_top_pane.append_column( gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=1) )
+        middle_top_pane.append_column( gtk.TreeViewColumn("Authors", gtk.CellRendererText(), markup=0) )
+        middle_top_pane.append_column( gtk.TreeViewColumn("Journal", gtk.CellRendererText(), markup=2) )
+        middle_top_pane.append_column( gtk.TreeViewColumn("Year", gtk.CellRendererText(), markup=3) )
+        
+        for column in middle_top_pane.get_columns():
+            column.set_resizable(True)
+        
+#        left_pane.connect('cursor-changed', self.select_left_pane_item)
+        
+    def refresh_middle_pane_from_my_library(self):
+        middle_top_pane = self.ui.get_widget('middle_top_pane')
+        self.middle_top_pane_model.clear()
+        for paper in Paper.objects.filter(full_text__isnull=False):
+            authors = []
+            for author in paper.authors.order_by('id'):
+                authors.append( str(author.name) )
+            self.middle_top_pane_model.append( (', '.join(authors), paper.title, paper.source.name, paper.source.publication_date.year, ) )
+        middle_top_pane.columns_autosize()
+       
 
 if __name__ == "__main__":
     if not os.path.isdir( settings.MEDIA_ROOT ):
