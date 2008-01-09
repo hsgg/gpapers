@@ -39,6 +39,7 @@ try:
     import gtk.glade
     import gnome
     import gnome.ui
+    import pango
     gobject.threads_init()
     gtk.gdk.threads_init()
 except:
@@ -384,13 +385,27 @@ class MainGUI:
         middle_top_pane.set_model( self.middle_top_pane_model )
         middle_top_pane.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         
-        middle_top_pane.append_column( gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=1) )
-        middle_top_pane.append_column( gtk.TreeViewColumn("Authors", gtk.CellRendererText(), markup=0) )
-        middle_top_pane.append_column( gtk.TreeViewColumn("Journal", gtk.CellRendererText(), markup=2) )
-        middle_top_pane.append_column( gtk.TreeViewColumn("Year", gtk.CellRendererText(), markup=3) )
+        column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=1)
+        column.set_min_width(256)
+        column.set_expand(True)
+        middle_top_pane.append_column( column )
+        column = gtk.TreeViewColumn("Authors", gtk.CellRendererText(), markup=0)
+        column.set_min_width(128)
+        column.set_expand(True)
+        middle_top_pane.append_column( column )
+        column = gtk.TreeViewColumn("Journal", gtk.CellRendererText(), markup=2)
+        column.set_min_width(128)
+        column.set_expand(True)
+        middle_top_pane.append_column( column )
+        column = gtk.TreeViewColumn("Year", gtk.CellRendererText(), markup=3)
+        column.set_min_width(48)
+        column.set_expand(False)
+        middle_top_pane.append_column( column )
         
         for column in middle_top_pane.get_columns():
             column.set_resizable(True)
+            for renderer in column.get_cell_renderers():
+                renderer.set_property( 'ellipsize', pango.ELLIPSIZE_END )
         
 #        left_pane.connect('cursor-changed', self.select_left_pane_item)
         
