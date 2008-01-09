@@ -1,12 +1,15 @@
+import os
 from django.db import models
 
 
 class Publisher(models.Model):
 
     name = models.CharField(max_length='1024')
+    imported = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
 
     class Admin:
-        list_display = ( 'name', )
+        list_display = ( 'id', 'name', )
 
     def __unicode__(self):
         return self.name
@@ -20,9 +23,14 @@ class Source(models.Model):
     location = models.CharField(max_length='1024')
     publication_date = models.DateField()
     publisher = models.ForeignKey(Publisher, null=True)
+    imported = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
 
     class Admin:
         list_display = ( 'id', 'name', 'issue', 'location', 'publisher', 'publication_date', )
+
+    def __unicode__(self):
+        return self.name
 
 
 class Author(models.Model):
@@ -31,9 +39,11 @@ class Author(models.Model):
     location = models.CharField(max_length='1024')
     organization = models.CharField(max_length='1024')
     department = models.CharField(max_length='1024')
+    imported = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
 
     class Admin:
-        list_display = ( 'name', 'location', 'organization', 'department' )
+        list_display = ( 'id', 'name', 'location', 'organization', 'department' )
 
     def __unicode__(self):
         return self.name
@@ -42,6 +52,8 @@ class Author(models.Model):
 class Sponsor(models.Model):
 
     name = models.CharField(max_length='1024')
+    imported = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
 
     class Admin:
         list_display = ( 'id', 'name', )
@@ -55,6 +67,8 @@ class Reference(models.Model):
     line = models.CharField(max_length='1024')
     doi = models.CharField(max_length='1024', blank=True)
     ieee_url = models.URLField()
+    imported = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
 
     class Admin:
         list_display = ( 'id', 'line', 'doi' )
@@ -74,8 +88,11 @@ class Paper(models.Model):
     authors = models.ManyToManyField(Author)
     sponsors = models.ManyToManyField(Sponsor)
     references = models.ManyToManyField(Reference)
+    full_text = models.FileField(upload_to=os.path.join('papers','%Y','%m'))
+    imported = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
     
     class Admin:
-        list_display = ( 'doi', 'title' )
+        list_display = ( 'id', 'doi', 'title' )
 
 

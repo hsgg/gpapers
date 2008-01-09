@@ -46,6 +46,8 @@ except:
     sys.exit()
 
 # backend imports
+import settings
+from django.template import defaultfilters
 os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 from gPapers.models import *
 
@@ -138,12 +140,13 @@ def import_acm_citation(params):
         source, created = Source.objects.get_or_create(
             name = html_strip(node.contents[1].string),
             issue = html_strip(node.contents[6].string),
-            acm_toc_url = BASE_URL +'/'+ node.contents[8]['href'],
             location = html_strip(node.contents[11].string),
             publication_date = date( int( html_strip(node.contents[17].string).replace('Year of Publication: ','') ), 1, 1 ),
             publisher = publisher,
         )
-        if created: source.save()
+        if created:
+            source.acm_toc_url = BASE_URL +'/'+ node.contents[8]['href']
+            source.save()
         
         node = soup.find('strong', text='Source').parent.parent.nextSibling.nextSibling
         paper.source = source
@@ -195,6 +198,21 @@ def import_acm_citation(params):
                 )
                 if created: reference.save()
                 paper.references.add( reference )
+        
+        
+        node = soup.find('a', attrs={'name':'FullText'})
+        if node:
+            file_url = BASE_URL +'/'+ node['href']
+            print thread.get_ident(), 'downloading paper from', file_url
+            params = openanything.fetch(file_url)
+            if params['status']==200 or params['status']==302 :
+                ext = params['url'][ params['url'].rfind('.')+1:]
+                if not ext or len(ext)>5:
+                    ext = 'pdf'
+                paper.save_full_text_file( defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params['data'] )
+                paper.save()
+            else:
+                print thread.get_ident(), 'error downloading paper:', params
         
         print thread.get_ident(), 'paper =', paper
     except:
@@ -305,12 +323,20 @@ class MainGUI:
         self.ui.get_widget('menuitem_import_doi').connect('activate', self.import_doi)
         
     def init_search_box(self):
-        set_model_from_list( self.ui.get_widget('search_source'), ['local','ACM','PubMed'] )
-        self.ui.get_widget('search_source').set_active(0)
+        pass
+#        set_model_from_list( self.ui.get_widget('search_source'), ['My Library','ACM','IEEE'] )
+#        self.ui.get_widget('search_source').set_active(0)
+        
+    def init_(self):
+        pass
 
 
 
 if __name__ == "__main__":
+    if not os.path.isdir( settings.MEDIA_ROOT ):
+        os.mkdir( settings.MEDIA_ROOT )
+    if not os.path.isdir( os.path.join( settings.MEDIA_ROOT, 'papers' ) ):
+        os.mkdir( os.path.join( settings.MEDIA_ROOT, 'papers' ) )
     MainGUI()
     gtk.main()
         
