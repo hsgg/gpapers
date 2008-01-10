@@ -192,9 +192,9 @@ def import_acm_citation(params):
             if node.string:
                 reference, created = Reference.objects.get_or_create(
                     line = html_strip(node.string),
+                    paper = paper,
                 )
                 if created: reference.save()
-                paper.references.add( reference )
             else:
                 line = ''
                 doi = ''
@@ -206,9 +206,9 @@ def import_acm_citation(params):
                 reference, created = Reference.objects.get_or_create(
                     line = line,
                     doi = doi,
+                    paper = paper,
                 )
                 if created: reference.save()
-                paper.references.add( reference )
         
         
         for node in soup.findAll('a', attrs={'name':'FullText'}):
@@ -380,35 +380,66 @@ class MainGUI:
 
     def init_middle_top_pane(self):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
-        # authors, title, journal, year
-        self.middle_top_pane_model = gtk.ListStore( str, str, str, str, )
+        # id, authors, title, journal, year, rating
+        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int )
         middle_top_pane.set_model( self.middle_top_pane_model )
         middle_top_pane.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         
-        column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=1)
+        column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=2)
         column.set_min_width(256)
         column.set_expand(True)
         middle_top_pane.append_column( column )
-        column = gtk.TreeViewColumn("Authors", gtk.CellRendererText(), markup=0)
+        column = gtk.TreeViewColumn("Authors", gtk.CellRendererText(), markup=1)
         column.set_min_width(128)
         column.set_expand(True)
         middle_top_pane.append_column( column )
-        column = gtk.TreeViewColumn("Journal", gtk.CellRendererText(), markup=2)
+        column = gtk.TreeViewColumn("Journal", gtk.CellRendererText(), markup=3)
         column.set_min_width(128)
         column.set_expand(True)
         middle_top_pane.append_column( column )
-        column = gtk.TreeViewColumn("Year", gtk.CellRendererText(), markup=3)
+        column = gtk.TreeViewColumn("Year", gtk.CellRendererText(), markup=4)
         column.set_min_width(48)
+        column.set_expand(False)
+        middle_top_pane.append_column( column )
+        column = gtk.TreeViewColumn("Rating", gtk.CellRendererText(), markup=5)
+        column.set_min_width(64)
         column.set_expand(False)
         middle_top_pane.append_column( column )
         
         for column in middle_top_pane.get_columns():
             column.set_resizable(True)
+            column.set_clickable(True)
+            #column.connect('clicked', self.sortRows)
             for renderer in column.get_cell_renderers():
                 renderer.set_property( 'ellipsize', pango.ELLIPSIZE_END )
         
-#        left_pane.connect('cursor-changed', self.select_left_pane_item)
+        middle_top_pane.connect('cursor-changed', self.select_middle_top_pane_item)
         
+    def select_middle_top_pane_item(self, treeview):
+        selection = treeview.get_selection()
+        liststore, rows = selection.get_selected_rows()
+        if len(rows)==0:
+            self.ui.get_widget('paper_information_pane').get_buffer().set_text( 'nothing selected' )
+        elif len(rows)==1:
+            print rows[0]
+            print liststore[rows[0]][0]
+            paper = Paper.objects.get(id=liststore[rows[0]][0])
+            description = []
+            description.append( 'Title:  '+paper.title )
+            description.append( 'Authors:  '+liststore[rows[0]][1] )
+            description.append( 'Source:  %s %s (pages: %s)' % ( str(paper.source), paper.source_session, paper.source_pages ) )
+            description.append( '' )
+            description.append( 'Abstract:  '+paper.abstract )
+            description.append( '' )
+            description.append( 'References:' )
+            for ref in paper.reference_set.all():
+                description.append( ref.line )
+            self.ui.get_widget('paper_information_pane').get_buffer().set_text( '\n'.join(description) )
+            
+        else:
+            print 'selected', rows
+            self.ui.get_widget('paper_information_pane').get_buffer().set_text( '%i papers selected' % len(rows) )
+
     def refresh_middle_pane_from_my_library(self):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
         self.middle_top_pane_model.clear()
@@ -416,7 +447,7 @@ class MainGUI:
             authors = []
             for author in paper.authors.order_by('id'):
                 authors.append( str(author.name) )
-            self.middle_top_pane_model.append( (', '.join(authors), paper.title, paper.source.name, paper.source.publication_date.year, ) )
+            self.middle_top_pane_model.append( ( paper.id, ', '.join(authors), paper.title, paper.source.name, paper.source.publication_date.year, paper.rating ) )
         middle_top_pane.columns_autosize()
        
 

@@ -62,8 +62,28 @@ class Sponsor(models.Model):
         return self.name
     
     
+class Paper(models.Model):
+    
+    title = models.CharField(max_length='1024')
+    doi = models.CharField(max_length='1024')
+    source = models.ForeignKey(Source, null=True)
+    source_session = models.CharField(max_length='1024')
+    source_pages = models.CharField(max_length='1024')
+    abstract = models.TextField()
+    authors = models.ManyToManyField(Author)
+    sponsors = models.ManyToManyField(Sponsor)
+    full_text = models.FileField(upload_to=os.path.join('papers','%Y','%m'))
+    rating = models.IntegerField(default=0)
+    imported = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+    
+    class Admin:
+        list_display = ( 'id', 'doi', 'title' )
+
+
 class Reference(models.Model):
 
+    paper = models.ForeignKey(Paper)
     line = models.CharField(max_length='1024')
     doi = models.CharField(max_length='1024', blank=True)
     ieee_url = models.URLField()
@@ -75,25 +95,5 @@ class Reference(models.Model):
 
     def __unicode__(self):
         return self.line
-
-
-class Paper(models.Model):
-    
-    title = models.CharField(max_length='1024')
-    doi = models.CharField(max_length='1024')
-    source = models.ForeignKey(Source, null=True)
-    source_session = models.CharField(max_length='1024')
-    source_pages = models.CharField(max_length='1024')
-    abstract = models.TextField()
-    authors = models.ManyToManyField(Author)
-    sponsors = models.ManyToManyField(Sponsor)
-    references = models.ManyToManyField(Reference)
-    full_text = models.FileField(upload_to=os.path.join('papers','%Y','%m'))
-    rating = models.IntegerField(default=0)
-    imported = models.DateTimeField(auto_now_add=True)
-    updated = models.DateTimeField(auto_now=True)
-    
-    class Admin:
-        list_display = ( 'id', 'doi', 'title' )
 
 
