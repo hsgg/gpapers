@@ -65,7 +65,7 @@ class Sponsor(models.Model):
 class Paper(models.Model):
     
     title = models.CharField(max_length='1024')
-    doi = models.CharField(max_length='1024')
+    doi = models.CharField(max_length='1024', blank=True)
     source = models.ForeignKey(Source, null=True)
     source_session = models.CharField(max_length='1024')
     source_pages = models.CharField(max_length='1024')

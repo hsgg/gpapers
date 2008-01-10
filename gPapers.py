@@ -116,9 +116,12 @@ def import_acm_citation(params):
         title = []
         for node in soup.find('a', attrs={'name':'FullText'}).parent.parent.parent.find('td').findAll('strong'):
             title.append(node.string)
+        doi = ''
+        try: doi = str(soup.find('form', attrs={'name':'popbinder'}).nextSibling.table.findAll('tr')[-1].findAll('td')[-1].a.string)
+        except: pass
         paper, created = Paper.objects.get_or_create(
             title = html_strip(''.join(title)),
-            doi = str(soup.find('form', attrs={'name':'popbinder'}).nextSibling.table.findAll('tr')[-1].findAll('td')[-1].a.string),
+            doi = doi,
         )
         if created: paper.save()
         else: 
@@ -227,6 +230,7 @@ def import_acm_citation(params):
                     print thread.get_ident(), 'error downloading paper:', params
         
         print thread.get_ident(), 'paper =', paper
+        main_gui.refresh_middle_top_pane_if_viewing_library()
     except:
         traceback.print_exc()
     
@@ -362,6 +366,8 @@ def import_ieee_citation(params):
 
 class MainGUI:
     
+    current_middle_top_pane_refresh_thread_ident = None
+    
     def import_url(self, o):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
         #dialog.connect('response', lambda x,y: dialog.destroy())
@@ -441,20 +447,21 @@ class MainGUI:
     def select_left_pane_item(self, treeview):
         selection = treeview.get_selection()
         liststore, rows = selection.get_selected_rows()
-        print rows[0]
-        print liststore[rows[0]][0]
         self.ui.get_widget('middle_pane_label').set_markup( liststore[rows[0]][0] )
-        
+        self.middle_top_pane_model.clear()
         if rows[0]==(0,):
-            self.refresh_middle_pane_from_my_library()
+            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, () )
+        if rows[0]==(1,):
+            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_acm, () )
 
     def init_middle_top_pane(self):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
-        # id, authors, title, journal, year, rating
-        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int )
+        # id, authors, title, journal, year, rating, abstract, file_in_library
+        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, bool )
         middle_top_pane.set_model( self.middle_top_pane_model )
         middle_top_pane.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         
+        middle_top_pane.append_column( gtk.TreeViewColumn("", gtk.CellRendererToggle(), active=7) )
         column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=2)
         column.set_min_width(256)
         column.set_expand(True)
@@ -481,7 +488,8 @@ class MainGUI:
             column.set_clickable(True)
             #column.connect('clicked', self.sortRows)
             for renderer in column.get_cell_renderers():
-                renderer.set_property( 'ellipsize', pango.ELLIPSIZE_END )
+                if renderer.__class__.__name__=='CellRendererText':
+                    renderer.set_property( 'ellipsize', pango.ELLIPSIZE_END )
         
         middle_top_pane.connect('cursor-changed', self.select_middle_top_pane_item)
         
@@ -493,32 +501,81 @@ class MainGUI:
         elif len(rows)==1:
             print rows[0]
             print liststore[rows[0]][0]
-            paper = Paper.objects.get(id=liststore[rows[0]][0])
+#            paper = Paper.objects.get(id=liststore[rows[0]][0])
             description = []
-            description.append( 'Title:  '+paper.title )
-            description.append( 'Authors:  '+liststore[rows[0]][1] )
-            description.append( 'Source:  %s %s (pages: %s)' % ( str(paper.source), paper.source_session, paper.source_pages ) )
+            if liststore[rows[0]][2]:
+                description.append( 'Title:  '+liststore[rows[0]][2] )
+            if liststore[rows[0]][1]:
+                description.append( 'Authors:  '+liststore[rows[0]][1] )
+#            if paper.source:
+#                description.append( 'Source:  %s %s (pages: %s)' % ( str(paper.source), paper.source_session, paper.source_pages ) )
             description.append( '' )
-            description.append( 'Abstract:  '+paper.abstract )
-            description.append( '' )
-            description.append( 'References:' )
-            for ref in paper.reference_set.all():
-                description.append( ref.line )
+            if liststore[rows[0]][6]:
+                description.append( 'Abstract:  '+liststore[rows[0]][6] )
+#            description.append( '' )
+#            description.append( 'References:' )
+#            for ref in paper.reference_set.all():
+#                description.append( ref.line )
             self.ui.get_widget('paper_information_pane').get_buffer().set_text( '\n'.join(description) )
             
         else:
             print 'selected', rows
             self.ui.get_widget('paper_information_pane').get_buffer().set_text( '%i papers selected' % len(rows) )
+    
+    def update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(self, rows):
+        middle_top_pane = self.ui.get_widget('middle_top_pane')
+        if self.current_middle_top_pane_refresh_thread_ident==thread.get_ident():
+            gtk.gdk.threads_enter()
+            self.middle_top_pane_model.clear()
+            for row in rows:
+                self.middle_top_pane_model.append(row)
+            middle_top_pane.columns_autosize()
+            gtk.gdk.threads_leave()
 
     def refresh_middle_pane_from_my_library(self):
-        middle_top_pane = self.ui.get_widget('middle_top_pane')
-        self.middle_top_pane_model.clear()
+        rows = []
         for paper in Paper.objects.filter(full_text__isnull=False):
             authors = []
             for author in paper.authors.order_by('id'):
                 authors.append( str(author.name) )
-            self.middle_top_pane_model.append( ( paper.id, ', '.join(authors), paper.title, paper.source.name, paper.source.publication_date.year, paper.rating ) )
-        middle_top_pane.columns_autosize()
+            rows.append( ( paper.id, ', '.join(authors), paper.title, paper.source.name, paper.source.publication_date.year, paper.rating, paper.abstract, bool(paper.get_full_text_filename()) ) )
+        self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+    
+    def refresh_middle_top_pane_if_viewing_library(self):
+        selection = self.ui.get_widget('left_pane').get_selection()
+        liststore, rows = selection.get_selected_rows()
+        if rows[0]==(0,):
+            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, () )
+       
+    def refresh_middle_pane_from_acm(self):
+        rows = []
+        params = openanything.fetch( 'http://portal.acm.org/results.cfm?dl=ACM&query=%s' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
+        if params['status']==200 or params['status']==302:
+            soup = BeautifulSoup.BeautifulSoup( params['data'] )
+            parent_search_table_node = soup.find('div', attrs={'class':'authors'}).parent.parent.parent.parent.parent.parent
+            for node in parent_search_table_node.contents[0].findNextSiblings('tr'):
+#                print '=========================================================================================='
+                node = node.find('table')
+#                print node
+#                for node2 in node.findAll('td'):
+#                    print '-------------------------------'
+#                    print node2
+                tds = node.findAll('td')
+                row = ( 
+                    -1, # paper id 
+                    html_strip( tds[0].div.string ), # authors 
+                    html_strip( tds[0].a.string ), # title 
+                    ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[3].div.contents if x.string] ), # journal 
+                    html_strip( tds[1].string )[-4:], # year 
+                    0, # ranking
+                    ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[-1].findAll() if x.string] ), # abstract
+                    False, # file_in_library
+                )
+                print thread.get_ident(), 'row =', row
+                rows.append( row )
+                
+        self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+            
        
 
 if __name__ == "__main__":
@@ -526,6 +583,7 @@ if __name__ == "__main__":
         os.mkdir( settings.MEDIA_ROOT )
     if not os.path.isdir( os.path.join( settings.MEDIA_ROOT, 'papers' ) ):
         os.mkdir( os.path.join( settings.MEDIA_ROOT, 'papers' ) )
-    MainGUI()
+    global main_gui
+    main_gui = MainGUI()
     gtk.main()
         
