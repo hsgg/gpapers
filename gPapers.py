@@ -17,7 +17,7 @@
 #    with this program; if not, write to the Free Software Foundation, Inc.,
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-import commands, dircache, getopt, math, pwd, os, re, string, sys, thread, threading, traceback
+import commands, dircache, getopt, math, pwd, os, re, string, sys, thread, threading, time, traceback
 import desktop, openanything
 from datetime import date, datetime
 from time import strptime
@@ -28,6 +28,8 @@ RUN_FROM_DIR = os.path.abspath(os.path.dirname(sys.argv[0])) + '/'
 PROGRAM = 'gPapers'
 VERSION = 'v0.0.0'
 GPL = open( RUN_FROM_DIR + 'GPL.txt', 'r' ).read()
+
+ACM_BASE_URL = 'http://portal.acm.org'
 
 # GUI imports
 try:
@@ -107,7 +109,6 @@ def import_citation(url):
 
 
 def import_acm_citation(params):
-    BASE_URL = 'http://portal.acm.org'
     print thread.get_ident(), 'downloading acm citation:', params['url']
     try:
         print thread.get_ident(), 'parsing...'
@@ -152,7 +153,7 @@ def import_acm_citation(params):
             publisher = publisher,
         )
         if created:
-            source.acm_toc_url = BASE_URL +'/'+ node.contents[8]['href']
+            source.acm_toc_url = ACM_BASE_URL +'/'+ node.contents[8]['href']
             source.save()
         
         node = soup.find('strong', text='Source').parent.parent.nextSibling.nextSibling
@@ -216,7 +217,7 @@ def import_acm_citation(params):
         
         for node in soup.findAll('a', attrs={'name':'FullText'}):
             if node.contents[1]=='Pdf':
-                file_url = BASE_URL +'/'+ node['href']
+                file_url = ACM_BASE_URL +'/'+ node['href']
                 print thread.get_ident(), 'downloading paper from', file_url
                 params = openanything.fetch(file_url)
                 if params['status']==200 or params['status']==302 :
@@ -414,9 +415,19 @@ class MainGUI:
         self.ui.get_widget('menuitem_import_doi').connect('activate', self.import_doi)
         
     def init_search_box(self):
-        pass
+        thread.start_new_thread( self.watch_middle_pane_search, () )
+        
 #        set_model_from_list( self.ui.get_widget('search_source'), ['My Library','ACM','IEEE'] )
 #        self.ui.get_widget('search_source').set_active(0)
+
+    def watch_middle_pane_search(self):
+        self.last_middle_pane_search_string = ''
+        while True:
+            if self.ui.get_widget('middle_pane_search').get_text()!=self.last_middle_pane_search_string:
+                self.last_middle_pane_search_string = self.ui.get_widget('middle_pane_search').get_text()
+                print 'new  search string =', self.last_middle_pane_search_string
+                self.select_left_pane_item( self.ui.get_widget('left_pane') )
+            time.sleep(1)
         
     def init_left_pane(self):
         left_pane = self.ui.get_widget('left_pane')
@@ -445,8 +456,7 @@ class MainGUI:
         self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) )  ) )
 
     def select_left_pane_item(self, treeview):
-        selection = treeview.get_selection()
-        liststore, rows = selection.get_selected_rows()
+        liststore, rows = treeview.get_selection().get_selected_rows()
         self.ui.get_widget('middle_pane_label').set_markup( liststore[rows[0]][0] )
         self.middle_top_pane_model.clear()
         if rows[0]==(0,):
@@ -456,8 +466,8 @@ class MainGUI:
 
     def init_middle_top_pane(self):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
-        # id, authors, title, journal, year, rating, abstract, file_in_library
-        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, bool )
+        # id, authors, title, journal, year, rating, abstract, file_in_library, import_url
+        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, bool, str )
         middle_top_pane.set_model( self.middle_top_pane_model )
         middle_top_pane.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         
@@ -499,14 +509,15 @@ class MainGUI:
         if len(rows)==0:
             self.ui.get_widget('paper_information_pane').get_buffer().set_text( 'nothing selected' )
         elif len(rows)==1:
-            print rows[0]
-            print liststore[rows[0]][0]
-#            paper = Paper.objects.get(id=liststore[rows[0]][0])
+            try: paper = Paper.objects.find(id=liststore[rows[0]][0])
+            except: paper = None
             description = []
             if liststore[rows[0]][2]:
                 description.append( 'Title:  '+liststore[rows[0]][2] )
             if liststore[rows[0]][1]:
                 description.append( 'Authors:  '+liststore[rows[0]][1] )
+            if liststore[rows[0]][8]:
+                description.append( 'URL:  '+liststore[rows[0]][8] )
 #            if paper.source:
 #                description.append( 'Source:  %s %s (pages: %s)' % ( str(paper.source), paper.source_session, paper.source_pages ) )
             description.append( '' )
@@ -538,43 +549,65 @@ class MainGUI:
             authors = []
             for author in paper.authors.order_by('id'):
                 authors.append( str(author.name) )
-            rows.append( ( paper.id, ', '.join(authors), paper.title, paper.source.name, paper.source.publication_date.year, paper.rating, paper.abstract, bool(paper.get_full_text_filename()) ) )
+            rows.append( ( 
+                paper.id, ', '.join(authors), 
+                paper.title, paper.source.name, 
+                paper.source.publication_date.year, 
+                paper.rating, 
+                paper.abstract, 
+                bool(paper.get_full_text_filename()),
+                None, # import_url
+            ) )
         self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+        self.refresh_my_library_count()
     
     def refresh_middle_top_pane_if_viewing_library(self):
         selection = self.ui.get_widget('left_pane').get_selection()
         liststore, rows = selection.get_selected_rows()
         if rows[0]==(0,):
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, () )
+        else:
+            self.refresh_my_library_count()
        
+    def refresh_my_library_count(self):
+        gtk.gdk.threads_enter()
+        selection = self.ui.get_widget('left_pane').get_selection()
+        liststore, rows = selection.get_selected_rows()
+        liststore.set_value( self.left_pane_model.get_iter((0,)), 0, '<b>My Library</b>  <span foreground="#888888">(%i)</span>' % Paper.objects.count() )
+        print 'woot'
+        gtk.gdk.threads_leave()
+    
     def refresh_middle_pane_from_acm(self):
         rows = []
-        params = openanything.fetch( 'http://portal.acm.org/results.cfm?dl=ACM&query=%s' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
-        if params['status']==200 or params['status']==302:
-            soup = BeautifulSoup.BeautifulSoup( params['data'] )
-            parent_search_table_node = soup.find('div', attrs={'class':'authors'}).parent.parent.parent.parent.parent.parent
-            for node in parent_search_table_node.contents[0].findNextSiblings('tr'):
-#                print '=========================================================================================='
-                node = node.find('table')
-#                print node
-#                for node2 in node.findAll('td'):
-#                    print '-------------------------------'
-#                    print node2
-                tds = node.findAll('td')
-                row = ( 
-                    -1, # paper id 
-                    html_strip( tds[0].div.string ), # authors 
-                    html_strip( tds[0].a.string ), # title 
-                    ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[3].div.contents if x.string] ), # journal 
-                    html_strip( tds[1].string )[-4:], # year 
-                    0, # ranking
-                    ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[-1].findAll() if x.string] ), # abstract
-                    False, # file_in_library
-                )
-                print thread.get_ident(), 'row =', row
-                rows.append( row )
-                
-        self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+        try:
+            params = openanything.fetch( 'http://portal.acm.org/results.cfm?dl=ACM&query=%s' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
+            if params['status']==200 or params['status']==302:
+                soup = BeautifulSoup.BeautifulSoup( params['data'] )
+                parent_search_table_node = soup.find('div', attrs={'class':'authors'}).parent.parent.parent.parent.parent.parent
+                for node in parent_search_table_node.contents[0].findNextSiblings('tr'):
+    #                print '=========================================================================================='
+                    node = node.find('table')
+    #                print node
+    #                for node2 in node.findAll('td'):
+    #                    print '-------------------------------'
+    #                    print node2
+                    tds = node.findAll('td')
+                    row = ( 
+                        -1, # paper id 
+                        html_strip( tds[0].div.string ), # authors 
+                        html_strip( tds[0].a.string ), # title 
+                        ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[3].div.contents if x.string] ), # journal 
+                        html_strip( tds[1].string )[-4:], # year 
+                        0, # ranking
+                        ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[-1].findAll() if x.string] ), # abstract
+                        False, # file_in_library
+                        ACM_BASE_URL +'/'+ node.find('a')['href'], # import_url
+                    )
+                    print thread.get_ident(), 'row =', row
+                    rows.append( row )
+                self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+        except:
+            traceback.print_exc()
             
        
 
