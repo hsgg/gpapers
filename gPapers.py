@@ -425,7 +425,7 @@ class MainGUI:
         while True:
             if self.ui.get_widget('middle_pane_search').get_text()!=self.last_middle_pane_search_string:
                 self.last_middle_pane_search_string = self.ui.get_widget('middle_pane_search').get_text()
-                print 'new  search string =', self.last_middle_pane_search_string
+                print 'new search string =', self.last_middle_pane_search_string
                 self.select_left_pane_item( self.ui.get_widget('left_pane') )
             time.sleep(1)
         
@@ -544,22 +544,62 @@ class MainGUI:
             gtk.gdk.threads_leave()
 
     def refresh_middle_pane_from_my_library(self):
-        rows = []
-        for paper in Paper.objects.filter(full_text__isnull=False):
-            authors = []
-            for author in paper.authors.order_by('id'):
-                authors.append( str(author.name) )
-            rows.append( ( 
-                paper.id, ', '.join(authors), 
-                paper.title, paper.source.name, 
-                paper.source.publication_date.year, 
-                paper.rating, 
-                paper.abstract, 
-                bool(paper.get_full_text_filename()),
-                None, # import_url
-            ) )
-        self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
-        self.refresh_my_library_count()
+        try:
+            rows = []
+            search_text = self.ui.get_widget('middle_pane_search').get_text()
+            if search_text:
+                paper_ids = set()
+                for paper in Paper.objects.filter( title__icontains=search_text ):
+                    paper_ids.add( paper.id )
+                for paper in Paper.objects.filter( doi__icontains=search_text ):
+                    paper_ids.add( paper.id )
+                for paper in Paper.objects.filter( source_session__icontains=search_text ):
+                    paper_ids.add( paper.id )
+                for paper in Paper.objects.filter( abstract__icontains=search_text ):
+                    paper_ids.add( paper.id )
+                for sponsor in Sponsor.objects.filter( name__icontains=search_text ):
+                    for paper in sponsor.paper_set.all(): paper_ids.add( paper.id )
+                for author in Author.objects.filter( name__icontains=search_text ):
+                    for paper in author.paper_set.all(): paper_ids.add( paper.id )
+                for author in Author.objects.filter( location__icontains=search_text ):
+                    for paper in author.paper_set.all(): paper_ids.add( paper.id )
+                for author in Author.objects.filter( organization__icontains=search_text ):
+                    for paper in author.paper_set.all(): paper_ids.add( paper.id )
+                for author in Author.objects.filter( department__icontains=search_text ):
+                    for paper in author.paper_set.all(): paper_ids.add( paper.id )
+                for source in Source.objects.filter( name__icontains=search_text ):
+                    for paper in source.paper_set.all(): paper_ids.add( paper.id )
+                for source in Source.objects.filter( issue__icontains=search_text ):
+                    for paper in source.paper_set.all(): paper_ids.add( paper.id )
+                for source in Source.objects.filter( location__icontains=search_text ):
+                    for paper in source.paper_set.all(): paper_ids.add( paper.id )
+                for publisher in Publisher.objects.filter( name__icontains=search_text ):
+                    for source in publisher.source_set.all():
+                        for paper in source.paper_set.all(): paper_ids.add( paper.id )
+                for reference in Reference.objects.filter( line__icontains=search_text ):
+                    paper_ids.add( reference.paper.id )
+                for reference in Reference.objects.filter( doi__icontains=search_text ):
+                    paper_ids.add( reference.paper.id )
+                papers = Paper.objects.in_bulk( list(paper_ids) ).values()
+            else:
+                papers = Paper.objects.all()
+            for paper in papers:
+                authors = []
+                for author in paper.authors.order_by('id'):
+                    authors.append( str(author.name) )
+                rows.append( ( 
+                    paper.id, ', '.join(authors), 
+                    paper.title, paper.source.name, 
+                    paper.source.publication_date.year, 
+                    paper.rating, 
+                    paper.abstract, 
+                    bool( os.path.isfile( paper.get_full_text_filename() ) ),
+                    None, # import_url
+                ) )
+            self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+            self.refresh_my_library_count()
+        except:
+            traceback.print_exc()
     
     def refresh_middle_top_pane_if_viewing_library(self):
         selection = self.ui.get_widget('left_pane').get_selection()
@@ -574,7 +614,6 @@ class MainGUI:
         selection = self.ui.get_widget('left_pane').get_selection()
         liststore, rows = selection.get_selected_rows()
         liststore.set_value( self.left_pane_model.get_iter((0,)), 0, '<b>My Library</b>  <span foreground="#888888">(%i)</span>' % Paper.objects.count() )
-        print 'woot'
         gtk.gdk.threads_leave()
     
     def refresh_middle_pane_from_acm(self):
@@ -585,12 +624,7 @@ class MainGUI:
                 soup = BeautifulSoup.BeautifulSoup( params['data'] )
                 parent_search_table_node = soup.find('div', attrs={'class':'authors'}).parent.parent.parent.parent.parent.parent
                 for node in parent_search_table_node.contents[0].findNextSiblings('tr'):
-    #                print '=========================================================================================='
                     node = node.find('table')
-    #                print node
-    #                for node2 in node.findAll('td'):
-    #                    print '-------------------------------'
-    #                    print node2
                     tds = node.findAll('td')
                     row = ( 
                         -1, # paper id 
@@ -603,7 +637,7 @@ class MainGUI:
                         False, # file_in_library
                         ACM_BASE_URL +'/'+ node.find('a')['href'], # import_url
                     )
-                    print thread.get_ident(), 'row =', row
+                    #print thread.get_ident(), 'row =', row
                     rows.append( row )
                 self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
         except:
