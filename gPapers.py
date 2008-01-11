@@ -506,16 +506,28 @@ class MainGUI:
 
     def init_middle_top_pane(self):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
-        # id, authors, title, journal, year, rating, abstract, file_in_library, import_url
-        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, bool, str )
+        # id, authors, title, journal, year, rating, abstract, icon, import_url
+        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, gtk.gdk.Pixbuf, str )
         middle_top_pane.set_model( self.middle_top_pane_model )
         middle_top_pane.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         
-        middle_top_pane.append_column( gtk.TreeViewColumn("", gtk.CellRendererToggle(), active=7) )
-        column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=2)
+        #middle_top_pane.append_column( gtk.TreeViewColumn("", gtk.CellRendererToggle(), active=7) )
+        #column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=2)
+        #column.set_min_width(256)
+        #column.set_expand(True)
+        #middle_top_pane.append_column( column )
+
+        column = gtk.TreeViewColumn()
+        column.set_title('Title')
         column.set_min_width(256)
-        column.set_expand(True)
-        middle_top_pane.append_column( column )
+        renderer = gtk.CellRendererPixbuf()
+        column.pack_start(renderer, expand=False)
+        column.add_attribute(renderer, 'pixbuf', 7)
+        renderer = gtk.CellRendererText()
+        column.pack_start(renderer, expand=True)
+        column.add_attribute(renderer, 'markup', 2)        
+        middle_top_pane.append_column(column)
+        
         column = gtk.TreeViewColumn("Authors", gtk.CellRendererText(), markup=1)
         column.set_min_width(128)
         column.set_expand(True)
@@ -562,8 +574,11 @@ class MainGUI:
                 self.paper_information_pane_model.append(( '<b>Authors:</b>', liststore[rows[0]][1] ,))
             if liststore[rows[0]][3]:
                 self.paper_information_pane_model.append(( '<b>Journal:</b>', liststore[rows[0]][3] ,))
-            if liststore[rows[0]][7]:
-                self.paper_information_pane_model.append(( '<b>Other:</b>', 'Full text saved in local library.' ,))
+            status = []
+            if paper and os.path.isfile( paper.get_full_text_filename() ):
+                status.append( 'Full text saved in local library.' )
+            if status:
+                self.paper_information_pane_model.append(( '<b>Status:</b>', '\n'.join(status) ,))
 #            if paper.source:
 #                description.append( 'Source:  %s %s (pages: %s)' % ( str(paper.source), paper.source_session, paper.source_pages ) )
             if liststore[rows[0]][6]:
@@ -576,8 +591,8 @@ class MainGUI:
             
             if liststore[rows[0]][8] and not paper:
                 print 'url', liststore[rows[0]][8]
-                button = gtk.ToolButton(gtk.STOCK_SAVE)
-                button.set_tooltip_markup('Save this paper to your library...')
+                button = gtk.ToolButton(gtk.STOCK_ADD)
+                button.set_tooltip_markup('Add this paper to your library...')
                 button.connect( 'clicked', lambda x: fetch_citation_via_url(liststore[rows[0]][8]) )
                 paper_information_toolbar.insert( button, -1 )
                 paper_information_toolbar.show_all()
@@ -589,8 +604,8 @@ class MainGUI:
                     downloadable_paper_urls.add( liststore[row][8] )
             if len(downloadable_paper_urls):
                 self.paper_information_pane_model.append(( '<b>Number of new papers:</b>', len(downloadable_paper_urls) ,))
-                button = gtk.ToolButton(gtk.STOCK_SAVE)
-                button.set_tooltip_markup( 'Save new papers (%i) to your library...' % len(downloadable_paper_urls) )
+                button = gtk.ToolButton(gtk.STOCK_ADD)
+                button.set_tooltip_markup( 'Add new papers (%i) to your library...' % len(downloadable_paper_urls) )
                 button.connect( 'clicked', lambda x: fetch_citations_via_urls(downloadable_paper_urls) )
                 paper_information_toolbar.insert( button, -1 )
                 paper_information_toolbar.show_all()
@@ -653,13 +668,24 @@ class MainGUI:
                 authors = []
                 for author in paper.authors.order_by('id'):
                     authors.append( str(author.name) )
+                if os.path.isfile( paper.get_full_text_filename() ):
+                    icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
+                else:
+                    icon = None
+                if paper.source:
+                    journal = paper.source.name
+                    pub_year = paper.source.publication_date.year
+                else: 
+                    journal = ''
+                    pub_year = ''
                 rows.append( ( 
                     paper.id, ', '.join(authors), 
-                    paper.title, paper.source.name, 
-                    paper.source.publication_date.year, 
+                    paper.title,
+                    journal, 
+                    pub_year, 
                     paper.rating, 
                     paper.abstract, 
-                    bool( os.path.isfile( paper.get_full_text_filename() ) ),
+                    icon, # icon
                     None, # import_url
                 ) )
             self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
@@ -700,9 +726,17 @@ class MainGUI:
                     else:
                         first_author = authors
                     print 'first_author', first_author
-                    paper_id = -1
-                    try: paper_id = Paper.objects.get( title=title, authors__name__exact=first_author ).id
-                    except: pass
+                    try:
+                        paper = Paper.objects.get( title=title, authors__name__exact=first_author )
+                        paper_id = paper.id
+                        if os.path.isfile( paper.get_full_text_filename() ):
+                            icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
+                        else:
+                            icon = None
+                    except:
+                        paper = None
+                        paper_id = -1
+                        icon = None
                     row = ( 
                         paper_id, # paper id 
                         authors, # authors 
@@ -711,7 +745,7 @@ class MainGUI:
                         html_strip( tds[1].string )[-4:], # year 
                         0, # ranking
                         ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[-1].findAll() if x.string] ), # abstract
-                        paper_id!=-1, # file_in_library
+                        icon, # icon
                         ACM_BASE_URL +'/'+ node.find('a')['href'], # import_url
                     )
                     #print thread.get_ident(), 'row =', row
@@ -732,7 +766,7 @@ class MainGUI:
         if not self.ui.get_widget('middle_pane_search').get_text(): return
         rows = []
         try:
-            params = openanything.fetch( 'http://ieeexplore.ieee.org/search/freesearchresult.jsp?history=yes&queryText=%s&imageField.x=0&imageField.y=0' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
+            params = openanything.fetch( 'http://ieeexplore.ieee.org/search/freesearchresult.jsp?history=yes&queryText=%%28%s%%29&imageField.x=0&imageField.y=0' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
             if params['status']==200 or params['status']==302:
                 soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<!-BMS End-->','') )
                 for node in soup.findAll( 'td', attrs={'class':'bodyCopyBlackLarge'} ):
@@ -757,7 +791,7 @@ class MainGUI:
                             '', # year 
                             0, # ranking
                             '', # abstract
-                            paper_id!=-1, # file_in_library
+                            file_in_library, # icon
                             IEEE_BASE_URL + node.findAll('a', attrs={'class':'bodyCopySpaced'})[0]['href'], # import_url
                         )
                         print thread.get_ident(), 'row =', row

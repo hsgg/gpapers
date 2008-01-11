@@ -70,6 +70,7 @@ class Paper(models.Model):
     source_session = models.CharField(max_length='1024')
     source_pages = models.CharField(max_length='1024')
     abstract = models.TextField()
+    notes = models.TextField()
     authors = models.ManyToManyField(Author)
     sponsors = models.ManyToManyField(Sponsor)
     full_text = models.FileField(upload_to=os.path.join('papers','%Y','%m'))
@@ -95,5 +96,20 @@ class Reference(models.Model):
 
     def __unicode__(self):
         return self.line
+
+
+class Bookmark(models.Model):
+
+    paper = models.ForeignKey(Paper)
+    page = models.IntegerField()
+    notes = models.TextField()
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Admin:
+        list_display = ( 'id', 'paper', 'page' )
+
+    def __unicode__(self):
+        return self.notes
 
 
