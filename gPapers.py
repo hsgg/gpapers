@@ -406,6 +406,7 @@ class MainGUI:
         self.init_search_box()
         self.init_left_pane()
         self.init_middle_top_pane()
+        self.init_paper_information_pane()
         self.refresh_left_pane()        
         main_window.show()
 
@@ -446,6 +447,30 @@ class MainGUI:
         
         left_pane.connect('cursor-changed', self.select_left_pane_item)
         
+    def init_paper_information_pane(self):
+        pane = self.ui.get_widget('paper_information_pane')
+        # text
+        self.paper_information_pane_model = gtk.ListStore( str, str )
+        pane.set_model( self.paper_information_pane_model )
+        
+        pane.connect('size-allocate', self.resize_paper_information_pane )
+        
+        pane.append_column( gtk.TreeViewColumn("", gtk.CellRendererText(), markup=0) )
+
+        column = gtk.TreeViewColumn()
+        renderer = gtk.CellRendererText()
+        renderer.set_property('editable', True)
+        renderer.set_property('wrap-mode', pango.WRAP_WORD)
+        renderer.set_property('wrap-width', 500)
+        column.pack_start(renderer, expand=True)
+        column.add_attribute(renderer, 'markup', 1)
+        pane.append_column( column )
+        
+    def resize_paper_information_pane(self, treeview, o2, width=None):
+        if width==None:
+            width = treeview.get_column(1).get_width()-16
+        treeview.get_column(1).get_cell_renderers()[0].set_property('wrap-width', width)
+
     def refresh_left_pane(self):
         left_pane = self.ui.get_widget('left_pane')
         self.left_pane_model.clear()
@@ -463,6 +488,7 @@ class MainGUI:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, () )
         if rows[0]==(1,):
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_acm, () )
+        self.select_middle_top_pane_item( self.ui.get_widget('middle_top_pane') )
 
     def init_middle_top_pane(self):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
@@ -506,32 +532,38 @@ class MainGUI:
     def select_middle_top_pane_item(self, treeview):
         selection = treeview.get_selection()
         liststore, rows = selection.get_selected_rows()
+        self.paper_information_pane_model.clear()
+        self.ui.get_widget('paper_information_pane').columns_autosize()
+        print 'rows =', rows
         if len(rows)==0:
-            self.ui.get_widget('paper_information_pane').get_buffer().set_text( 'nothing selected' )
+            pass
         elif len(rows)==1:
             try: paper = Paper.objects.find(id=liststore[rows[0]][0])
             except: paper = None
-            description = []
             if liststore[rows[0]][2]:
-                description.append( 'Title:  '+liststore[rows[0]][2] )
+                self.paper_information_pane_model.append(( '<b>Title:</b>', liststore[rows[0]][2] ,))
             if liststore[rows[0]][1]:
-                description.append( 'Authors:  '+liststore[rows[0]][1] )
+                self.paper_information_pane_model.append(( '<b>Authors:</b>', liststore[rows[0]][1] ,))
+            if liststore[rows[0]][3]:
+                self.paper_information_pane_model.append(( '<b>Journal:</b>', liststore[rows[0]][3] ,))
             if liststore[rows[0]][8]:
-                description.append( 'URL:  '+liststore[rows[0]][8] )
+                print 'url', liststore[rows[0]][8]
+#                self.paper_information_pane_model.append(( '<b>URL:</b>', liststore[rows[0]][8] ,))
+            if liststore[rows[0]][7]:
+                self.paper_information_pane_model.append(( '<b>Other:</b>', 'Full text saved in local library.' ,))
 #            if paper.source:
 #                description.append( 'Source:  %s %s (pages: %s)' % ( str(paper.source), paper.source_session, paper.source_pages ) )
-            description.append( '' )
             if liststore[rows[0]][6]:
-                description.append( 'Abstract:  '+liststore[rows[0]][6] )
+                self.paper_information_pane_model.append(( '<b>Abstract:</b>', liststore[rows[0]][6] ,))
 #            description.append( '' )
 #            description.append( 'References:' )
 #            for ref in paper.reference_set.all():
 #                description.append( ref.line )
-            self.ui.get_widget('paper_information_pane').get_buffer().set_text( '\n'.join(description) )
+            #self.ui.get_widget('paper_information_pane').get_buffer().set_text( '\n'.join(description) )
             
         else:
-            print 'selected', rows
-            self.ui.get_widget('paper_information_pane').get_buffer().set_text( '%i papers selected' % len(rows) )
+            self.paper_information_pane_model.append(( '<b>Number of papers:</b>', len(rows) ,))
+        
     
     def update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(self, rows):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
