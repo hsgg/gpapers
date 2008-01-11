@@ -69,11 +69,12 @@ def set_model_from_list(cb, items, index=None):
     cb.set_model(model)
 
 def fetch_citation_via_url(url):
+    print 'trying to fetch:', url
     t = thread.start_new_thread( import_citation, (url,) )
     
 def fetch_citations_via_urls(urls):
     for url in urls:
-        t = thread.start_new_thread( import_citation, (url,) )
+        fetch_citation_via_url(url)
     
 def import_citation(url):
     try:
@@ -111,7 +112,17 @@ def import_citation(url):
     error.show()
     gtk.gdk.threads_leave()
     
-
+def should_we_reimport_paper(paper):
+    gtk.gdk.threads_enter()
+    dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
+    #dialog.connect('response', lambda x,y: dialog.destroy())
+    dialog.set_markup('This paper already exists in your local library:\n\n<i>"%s"</i>\n(imported on %s)\n\nShould we continue the import, updating/overwriting the previous entry?' % ( paper.title, str(paper.imported.date()) ))
+    dialog.set_default_response(gtk.RESPONSE_OK)
+    dialog.show_all()
+    response = dialog.run()
+    dialog.destroy()
+    gtk.gdk.threads_leave()
+    return response == gtk.RESPONSE_OK
 
 def import_acm_citation(params):
     print thread.get_ident(), 'downloading acm citation:', params['url']
@@ -132,16 +143,7 @@ def import_acm_citation(params):
         if created: paper.save()
         else: 
             print thread.get_ident(), 'paper already imported'
-            gtk.gdk.threads_enter()
-            dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
-            #dialog.connect('response', lambda x,y: dialog.destroy())
-            dialog.set_markup('<b>Paper Already Exists</b>\n\nShould we continue the import, updating/overwriting the previous entry?')
-            dialog.set_default_response(gtk.RESPONSE_OK)
-            dialog.show_all()
-            response = dialog.run()
-            dialog.destroy()
-            gtk.gdk.threads_leave()
-            if response == gtk.RESPONSE_CANCEL:
+            if not should_we_reimport_paper(paper):
                 return
 
         publisher, created = Publisher.objects.get_or_create(
@@ -260,16 +262,7 @@ def import_ieee_citation(params):
         if created: paper.save()
         else: 
             print thread.get_ident(), 'paper already imported'
-            gtk.gdk.threads_enter()
-            dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
-            #dialog.connect('response', lambda x,y: dialog.destroy())
-            dialog.set_markup('<b>Paper Already Exists</b>\n\nShould we continue the import, updating/overwriting the previous entry?')
-            dialog.set_default_response(gtk.RESPONSE_OK)
-            dialog.show_all()
-            response = dialog.run()
-            dialog.destroy()
-            gtk.gdk.threads_leave()
-            if response == gtk.RESPONSE_CANCEL:
+            if not should_we_reimport_paper(paper):
                 return
 
         publisher, created = Publisher.objects.get_or_create(
@@ -577,6 +570,10 @@ class MainGUI:
             status = []
             if paper and os.path.isfile( paper.get_full_text_filename() ):
                 status.append( 'Full text saved in local library.' )
+                button = gtk.ToolButton(gtk.STOCK_OPEN)
+                button.set_tooltip_markup('Open the full text of this paper in a new window...')
+                button.connect( 'clicked', lambda x: desktop.open( paper.get_full_text_filename() ) )
+                paper_information_toolbar.insert( button, -1 )
             if status:
                 self.paper_information_pane_model.append(( '<b>Status:</b>', '\n'.join(status) ,))
 #            if paper.source:
@@ -589,13 +586,19 @@ class MainGUI:
 #                description.append( ref.line )
             #self.ui.get_widget('paper_information_pane').get_buffer().set_text( '\n'.join(description) )
             
-            if liststore[rows[0]][8] and not paper:
-                print 'url', liststore[rows[0]][8]
-                button = gtk.ToolButton(gtk.STOCK_ADD)
-                button.set_tooltip_markup('Add this paper to your library...')
-                button.connect( 'clicked', lambda x: fetch_citation_via_url(liststore[rows[0]][8]) )
-                paper_information_toolbar.insert( button, -1 )
-                paper_information_toolbar.show_all()
+            if liststore[rows[0]][8]:
+                if paper:
+                    print 'url', liststore[rows[0]][8]
+                    button = gtk.ToolButton(gtk.STOCK_REFRESH)
+                    button.set_tooltip_markup('Re-add this paper to your library...')
+                    button.connect( 'clicked', lambda x: fetch_citation_via_url(liststore[rows[0]][8]) )
+                    paper_information_toolbar.insert( button, -1 )
+                else:
+                    print 'url', liststore[rows[0]][8]
+                    button = gtk.ToolButton(gtk.STOCK_ADD)
+                    button.set_tooltip_markup('Add this paper to your library...')
+                    button.connect( 'clicked', lambda x: fetch_citation_via_url(liststore[rows[0]][8]) )
+                    paper_information_toolbar.insert( button, -1 )
         else:
             self.paper_information_pane_model.append(( '<b>Number of papers:</b>', len(rows) ,))
             downloadable_paper_urls = set()
@@ -608,7 +611,7 @@ class MainGUI:
                 button.set_tooltip_markup( 'Add new papers (%i) to your library...' % len(downloadable_paper_urls) )
                 button.connect( 'clicked', lambda x: fetch_citations_via_urls(downloadable_paper_urls) )
                 paper_information_toolbar.insert( button, -1 )
-                paper_information_toolbar.show_all()
+        paper_information_toolbar.show_all()
         
     def echo_objects(self, a=None, b=None, c=None):
         print a,b,c
