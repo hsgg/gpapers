@@ -30,6 +30,7 @@ VERSION = 'v0.0.0'
 GPL = open( RUN_FROM_DIR + 'GPL.txt', 'r' ).read()
 
 ACM_BASE_URL = 'http://portal.acm.org'
+IEEE_BASE_URL = 'http://ieeexplore.ieee.org'
 
 # GUI imports
 try:
@@ -69,6 +70,10 @@ def set_model_from_list(cb, items, index=None):
 
 def fetch_citation_via_url(url):
     t = thread.start_new_thread( import_citation, (url,) )
+    
+def fetch_citations_via_urls(urls):
+    for url in urls:
+        t = thread.start_new_thread( import_citation, (url,) )
     
 def import_citation(url):
     try:
@@ -488,10 +493,15 @@ class MainGUI:
         liststore, rows = treeview.get_selection().get_selected_rows()
         self.ui.get_widget('middle_pane_label').set_markup( liststore[rows[0]][0] )
         self.middle_top_pane_model.clear()
-        if rows[0]==(0,):
+        print 'rows[0][0]', rows[0][0]
+        if rows[0][0]==0:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, () )
-        if rows[0]==(1,):
+        if rows[0][0]==1:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_acm, () )
+        if rows[0][0]==2:
+            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_ieee, () )
+        if rows[0][0]==3:
+            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_pubmed, () )
         self.select_middle_top_pane_item( self.ui.get_widget('middle_top_pane') )
 
     def init_middle_top_pane(self):
@@ -573,6 +583,17 @@ class MainGUI:
                 paper_information_toolbar.show_all()
         else:
             self.paper_information_pane_model.append(( '<b>Number of papers:</b>', len(rows) ,))
+            downloadable_paper_urls = set()
+            for row in rows:
+                if liststore[row][8] and liststore[row][0]==-1:
+                    downloadable_paper_urls.add( liststore[row][8] )
+            if len(downloadable_paper_urls):
+                self.paper_information_pane_model.append(( '<b>Number of new papers:</b>', len(downloadable_paper_urls) ,))
+                button = gtk.ToolButton(gtk.STOCK_SAVE)
+                button.set_tooltip_markup( 'Save new papers (%i) to your library...' % len(downloadable_paper_urls) )
+                button.connect( 'clicked', lambda x: fetch_citations_via_urls(downloadable_paper_urls) )
+                paper_information_toolbar.insert( button, -1 )
+                paper_information_toolbar.show_all()
         
     def echo_objects(self, a=None, b=None, c=None):
         print a,b,c
@@ -662,6 +683,7 @@ class MainGUI:
         gtk.gdk.threads_leave()
     
     def refresh_middle_pane_from_acm(self):
+        if not self.ui.get_widget('middle_pane_search').get_text(): return
         rows = []
         try:
             params = openanything.fetch( 'http://portal.acm.org/results.cfm?dl=ACM&query=%s' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
@@ -680,9 +702,7 @@ class MainGUI:
                     print 'first_author', first_author
                     paper_id = -1
                     try: paper_id = Paper.objects.get( title=title, authors__name__exact=first_author ).id
-                    except:
-                        traceback.print_exc()
-                        paper = None
+                    except: pass
                     row = ( 
                         paper_id, # paper id 
                         authors, # authors 
@@ -697,6 +717,62 @@ class MainGUI:
                     #print thread.get_ident(), 'row =', row
                     rows.append( row )
                 self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+            else:
+                gtk.gdk.threads_enter()
+                error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
+                error.connect('response', lambda x,y: error.destroy())
+                error.set_markup('<b>Unable to Search External Repository</b>\n\nHTTP Error code: %i' % params['status'])
+                error.show()
+                gtk.gdk.threads_leave()
+        except:
+            traceback.print_exc()
+            
+    def refresh_middle_pane_from_ieee(self):
+        print 'woot'
+        if not self.ui.get_widget('middle_pane_search').get_text(): return
+        rows = []
+        try:
+            params = openanything.fetch( 'http://ieeexplore.ieee.org/search/freesearchresult.jsp?history=yes&queryText=%s&imageField.x=0&imageField.y=0' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
+            if params['status']==200 or params['status']==302:
+                soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<!-BMS End-->','') )
+                for node in soup.findAll( 'td', attrs={'class':'bodyCopyBlackLarge'} ):
+                    try:
+                        tds = node.findAll( 'td', attrs={'class':'bodyCopyBlackLargeSpaced'} )
+                        title = html_strip( tds[1].strong.string )
+                        #print 'tds[1].contents', tds[1].contents
+                        authors = html_strip( tds[1].contents[2].string )
+                        if authors.find(';'):
+                            first_author = authors[0:authors.find(';')]
+                        else:
+                            first_author = authors
+                        print 'first_author', first_author
+                        paper_id = -1
+                        try: paper_id = Paper.objects.get( title=title, authors__name__exact=first_author ).id
+                        except: pass
+                        row = ( 
+                            paper_id, # paper id 
+                            authors, # authors 
+                            title, # title 
+                            html_strip( tds[1].contents[5].string ), # journal 
+                            '', # year 
+                            0, # ranking
+                            '', # abstract
+                            paper_id!=-1, # file_in_library
+                            IEEE_BASE_URL + node.findAll('a', attrs={'class':'bodyCopySpaced'})[0]['href'], # import_url
+                        )
+                        print thread.get_ident(), 'row =', row
+                        rows.append( row )
+                    except:
+                        traceback.print_exc()
+                    
+                self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+            else:
+                gtk.gdk.threads_enter()
+                error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
+                error.connect('response', lambda x,y: error.destroy())
+                error.set_markup('<b>Unable to Search External Repository</b>\n\nHTTP Error code: %i' % params['status'])
+                error.show()
+                gtk.gdk.threads_leave()
         except:
             traceback.print_exc()
             
