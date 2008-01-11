@@ -152,9 +152,8 @@ def import_acm_citation(params):
         title = []
         for node in soup.find('a', attrs={'name':'FullText'}).parent.parent.parent.find('td').findAll('strong'):
             title.append(node.string)
-        doi = ''
         try: doi = str(soup.find('form', attrs={'name':'popbinder'}).nextSibling.table.findAll('tr')[-1].findAll('td')[-1].a.string)
-        except: pass
+        except: doi = ''
         paper, created = Paper.objects.get_or_create(
             title = html_strip(''.join(title)),
             doi = doi,
@@ -525,8 +524,8 @@ class MainGUI:
 
     def init_middle_top_pane(self):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
-        # id, authors, title, journal, year, rating, abstract, icon, import_url
-        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, gtk.gdk.Pixbuf, str )
+        # id, authors, title, journal, year, rating, abstract, icon, import_url, doi
+        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, gtk.gdk.Pixbuf, str, str )
         middle_top_pane.set_model( self.middle_top_pane_model )
         middle_top_pane.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         
@@ -600,6 +599,8 @@ class MainGUI:
                 self.paper_information_pane_model.append(( '<b>Authors:</b>', liststore[rows[0]][1] ,))
             if liststore[rows[0]][3]:
                 self.paper_information_pane_model.append(( '<b>Journal:</b>', liststore[rows[0]][3] ,))
+            if liststore[rows[0]][9]:
+                self.paper_information_pane_model.append(( '<b>DOI:</b>', liststore[rows[0]][9] ,))
             status = []
             if paper and os.path.isfile( paper.get_full_text_filename() ):
                 status.append( 'Full text saved in local library.' )
@@ -768,6 +769,7 @@ class MainGUI:
                     paper.abstract, 
                     icon, # icon
                     None, # import_url
+                    paper.doi # doi
                 ) )
             self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
             self.refresh_my_library_count()
@@ -820,6 +822,7 @@ class MainGUI:
                         ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[-1].findAll() if x.string] ), # abstract
                         icon, # icon
                         ACM_BASE_URL +'/'+ node.find('a')['href'], # import_url
+                        '', # doi
                     )
                     #print thread.get_ident(), 'row =', row
                     rows.append( row )
@@ -874,6 +877,7 @@ class MainGUI:
                             '', # abstract
                             icon, # icon
                             IEEE_BASE_URL + node.findAll('a', attrs={'class':'bodyCopySpaced'})[0]['href'], # import_url
+                            '', # doi
                         )
                         print thread.get_ident(), 'row =', row
                         rows.append( row )
