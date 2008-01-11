@@ -455,7 +455,6 @@ class MainGUI:
         paper_notes = self.ui.get_widget('paper_notes')
         paper_notes.modify_base( gtk.STATE_NORMAL, gtk.gdk.color_parse("#fff7e8") )
         paper_notes.modify_base( gtk.STATE_INSENSITIVE, gtk.gdk.color_parse("#ffffff") )
-        paper_notes.get_buffer().connect('changed', self.update_paper_notes )
         pane = self.ui.get_widget('paper_information_pane')
         # text
         self.paper_information_pane_model = gtk.ListStore( str, str )
@@ -562,20 +561,20 @@ class MainGUI:
         self.paper_information_pane_model.clear()
         self.ui.get_widget('paper_information_pane').columns_autosize()
         paper_notes = self.ui.get_widget('paper_notes')
+        try: paper_notes.get_buffer().disconnect(self.update_paper_notes_handler_id)
+        except: pass
+        paper_notes.get_buffer().set_text('')
+        paper_notes.set_property('sensitive', False)
         paper_information_toolbar = self.ui.get_widget('paper_information_toolbar')
         paper_information_toolbar.foreach( paper_information_toolbar.remove )
         print 'rows =', rows
         if len(rows)==0:
-            self.currently_selected_paper_id = None
-            paper_notes.get_buffer().set_text('')
-            paper_notes.set_property('sensitive', False)
+            pass
         elif len(rows)==1:
             try: 
                 paper = Paper.objects.get(id=liststore[rows[0]][0])
-                self.currently_selected_paper_id = paper.id
             except:
                 paper = None
-                self.currently_selected_paper_id = None
             if liststore[rows[0]][2]:
                 self.paper_information_pane_model.append(( '<b>Title:</b>', liststore[rows[0]][2] ,))
             if liststore[rows[0]][1]:
@@ -616,18 +615,12 @@ class MainGUI:
                     paper_information_toolbar.insert( button, -1 )
                     
             if paper:
-                print 'paper.notes', paper.id, paper.notes
                 paper_notes.get_buffer().set_text( paper.notes )
                 paper_notes.set_property('sensitive', True)
-            else:
-                paper_notes.get_buffer().set_text('')
-                paper_notes.set_property('sensitive', False)
+                self.update_paper_notes_handler_id = paper_notes.get_buffer().connect('changed', self.update_paper_notes, paper.id )
                 
             
         else:
-            self.currently_selected_paper_id = None
-            paper_notes.get_buffer().set_text('')
-            paper_notes.set_property('sensitive', False)
             self.paper_information_pane_model.append(( '<b>Number of papers:</b>', len(rows) ,))
             downloadable_paper_urls = set()
             for row in rows:
@@ -644,14 +637,11 @@ class MainGUI:
     def echo_objects(self, a=None, b=None, c=None):
         print a,b,c
         
-    def update_paper_notes(self, text_buffer):
-        try:
-            paper = Paper.objects.get(id=self.currently_selected_paper_id)
-            print 'saving notes', text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
-            paper.notes = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
-            paper.save()
-        except:
-            pass
+    def update_paper_notes(self, text_buffer, paper_id):
+        paper = Paper.objects.get(id=paper_id)
+        #print 'saving notes', text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
+        paper.notes = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
+        paper.save()
     
     def update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(self, rows):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
