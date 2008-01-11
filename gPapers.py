@@ -58,6 +58,25 @@ from gPapers.models import *
 def html_strip(s):
     return str(s).replace('&nbsp;', ' ').strip()
 
+def humanize_count(x, s, p, places=1):
+    output = []
+    if places==-1:
+        places = 0
+        print_x = False
+    else:
+        print_x = True
+    x = float(x)*math.pow(10, places)
+    x = round(x)
+    x = x/math.pow(10, places)
+    if x-int(x)==0:
+        x = int(x)
+    if print_x: output.append( str(x) )
+    if x==1:
+        output.append(s)
+    else:
+        output.append(p)
+    return ' '.join(output)
+
 def set_model_from_list(cb, items, index=None):
     """Setup a ComboBox or ComboBoxEntry based on a list of strings, or a list of tuples with the index param."""           
     model = gtk.ListStore(str)
@@ -602,13 +621,11 @@ class MainGUI:
             
             if liststore[rows[0]][8]:
                 if paper:
-                    print 'url', liststore[rows[0]][8]
                     button = gtk.ToolButton(gtk.STOCK_REFRESH)
                     button.set_tooltip_markup('Re-add this paper to your library...')
                     button.connect( 'clicked', lambda x: fetch_citation_via_url(liststore[rows[0]][8]) )
                     paper_information_toolbar.insert( button, -1 )
                 else:
-                    print 'url', liststore[rows[0]][8]
                     button = gtk.ToolButton(gtk.STOCK_ADD)
                     button.set_tooltip_markup('Add this paper to your library...')
                     button.connect( 'clicked', lambda x: fetch_citation_via_url(liststore[rows[0]][8]) )
@@ -618,10 +635,16 @@ class MainGUI:
                 paper_notes.get_buffer().set_text( paper.notes )
                 paper_notes.set_property('sensitive', True)
                 self.update_paper_notes_handler_id = paper_notes.get_buffer().connect('changed', self.update_paper_notes, paper.id )
+
+                button = gtk.ToolButton(gtk.STOCK_REMOVE)
+                button.set_tooltip_markup('Remove this paper from your library...')
+                button.connect( 'clicked', lambda x: self.delete_papers([paper.id]) )
+                paper_information_toolbar.insert( button, -1 )
                 
             
         else:
             self.paper_information_pane_model.append(( '<b>Number of papers:</b>', len(rows) ,))
+            
             downloadable_paper_urls = set()
             for row in rows:
                 if liststore[row][8] and liststore[row][0]==-1:
@@ -632,6 +655,18 @@ class MainGUI:
                 button.set_tooltip_markup( 'Add new papers (%i) to your library...' % len(downloadable_paper_urls) )
                 button.connect( 'clicked', lambda x: fetch_citations_via_urls(downloadable_paper_urls) )
                 paper_information_toolbar.insert( button, -1 )
+
+            selected_valid_paper_ids = []
+            for row in rows:
+                if liststore[row][0]!=-1:
+                    selected_valid_paper_ids.append( liststore[row][0] )
+            print 'selected_valid_paper_ids', selected_valid_paper_ids
+            if len(selected_valid_paper_ids):
+                button = gtk.ToolButton(gtk.STOCK_REMOVE)
+                button.set_tooltip_markup('Remove these papers from your library...')
+                button.connect( 'clicked', lambda x: self.delete_papers( selected_valid_paper_ids ) )
+                paper_information_toolbar.insert( button, -1 )
+
         paper_information_toolbar.show_all()
         
     def echo_objects(self, a=None, b=None, c=None):
@@ -642,6 +677,22 @@ class MainGUI:
         #print 'saving notes', text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
         paper.notes = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
         paper.save()
+        
+    def delete_papers(self, ids):
+        papers = Paper.objects.in_bulk(ids).values()
+        print papers
+        paper_list_text = '\n'.join([ ('<i>"%s"</i>' % str(paper.title)) for paper in papers ])
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete the following %s?\n\n%s\n\n' % ( humanize_count( len(papers), 'paper', 'papers', places=-1 ), paper_list_text ))
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            for paper in papers:
+                print 'deleting paper:', paper.doi, paper.title, paper.authors.all()
+                paper.delete()
+            self.refresh_middle_pane_search()
     
     def update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(self, rows):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
