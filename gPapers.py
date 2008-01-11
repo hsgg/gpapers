@@ -55,8 +55,10 @@ from django.template import defaultfilters
 os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 from gPapers.models import *
 
+p_whitespace = re.compile( '[\s]+')
+print p_whitespace.sub( ' ', 'derek    anderson' )
 def html_strip(s):
-    return str(s).replace('&nbsp;', ' ').strip()
+    return p_whitespace.sub( ' ', str(s).replace('&nbsp;', ' ').strip() )
 
 def humanize_count(x, s, p, places=1):
     output = []
@@ -268,18 +270,19 @@ def import_acm_citation(params):
 
 
 def import_ieee_citation(params):
-    BASE_URL = 'http://portal.acm.org'
     print thread.get_ident(), 'downloading ieee citation:', params['url']
     try:
         print thread.get_ident(), 'parsing...'
-        soup = BeautifulSoup.BeautifulSoup( params['data'] )
-        print soup.prettify()
+        file = open('import.html','w')
+        file.write( params['data'] )
+        file.close()
+        soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<!-BMS End-->','').replace('<in>','') )
         
         print soup.find('span', attrs={'class':'headNavBlueXLarge2'})
         
         paper, created = Paper.objects.get_or_create(
-            title = html_strip( soup.find('span', attrs={'class':'headNavBlueXLarge2'}).string ),
-            doi = re.search( 'Digital Object Identifier: ([a-zA-Z0-9./]*)<br>', params['data'] ).group(1),
+            title = html_strip( str(soup.find('title').string).replace('IEEEXplore#','') ),
+            doi = re.search( 'Digital Object Identifier: ([a-zA-Z0-9./]*)', params['data'] ).group(1),
         )
         if created: paper.save()
         else: 
@@ -287,85 +290,45 @@ def import_ieee_citation(params):
             if not should_we_reimport_paper(paper):
                 return
 
-        publisher, created = Publisher.objects.get_or_create(
-            name=html_strip( soup.find('div', attrs={'class':'publishers'}).contents[0] ),
-        )
-        if created: publisher.save()
-            
-        node = soup.find('strong', text='Source').parent.parent.nextSibling.nextSibling
-        source, created = Source.objects.get_or_create(
-            name = html_strip(node.contents[1].string),
-            issue = html_strip(node.contents[6].string),
-            location = html_strip(node.contents[11].string),
-            publication_date = date( int( html_strip(node.contents[17].string).replace('Year of Publication: ','') ), 1, 1 ),
-            publisher = publisher,
-        )
-        if created:
-            source.acm_toc_url = BASE_URL +'/'+ node.contents[8]['href']
-            source.save()
+#        publisher, created = Publisher.objects.get_or_create(
+#            name=html_strip( BeautifulSoup.BeautifulSoup( re.search( 'This paper appears in: (.*)', params['data'] ).group(1) ).a.strong.string ),
+#        )
+#        print 'publisher', publisher
+#        if created: publisher.save()
         
-        node = soup.find('strong', text='Source').parent.parent.nextSibling.nextSibling
+        source_string = html_strip( BeautifulSoup.BeautifulSoup( re.search( 'This paper appears in: (.*)', params['data'] ).group(1) ).a.strong.string )
+        try: location = html_strip( re.search( 'Location: (.*)', params['data'] ).group(1) )
+        except: location = ''
+        source, created = Source.objects.get_or_create(
+            name = source_string,
+            issue = html_strip(''),
+            location = location,
+            publication_date = None,
+            publisher = None,
+        )
+        
         paper.source = source
-        paper.source_session = html_strip(node.contents[13].contents[0]).replace('SESSION: ','')
-        paper.source_pages = html_strip(node.contents[15].string).replace('Pages: ','')
-        paper.abstract = html_strip( soup.find('p', attrs={'class':'abstract'}).string )
+        paper.source_session = ''
+        #paper.source_pages = html_strip( re.search( 'On page(s):(.*)<BR>', params['data'], re.DOTALL ).group(1) ),
+        paper.abstract = html_strip( soup.findAll( 'td', attrs={'class':'bodyCopyBlackLargeSpaced'})[0].contents[-1] )
         paper.save()
         
-        for node in soup.find('div', attrs={'class':'authors'}).findAll('tr'):
-            td1, td2 = node.findAll('td')
-            org_and_location = td2.find('small')
-            if org_and_location:
-                author, created = Author.objects.get_or_create(
-                    name = html_strip( td1.find('a').string ),
-                    organization = html_strip( org_and_location.string[0:org_and_location.string.index(',')] ),
-                    location = html_strip( org_and_location.string[org_and_location.string.index(',')+1:] ),
-                )
+        for node in soup.findAll('p', attrs={'class':'bodyCopyBlackLargeSpaced'})[0].findAll('a', attrs={'class':'bodyCopy'}):
+            print 'author node:', node
+            if node.string:
+                name = html_strip( node.string )
             else:
-                author, created = Author.objects.get_or_create(
-                    name = html_strip( td1.find('a').string ),
-                )
+                name = html_strip( node.b.font.string ) + html_strip( node.contents[-1] )
+            print 'author', name
+            author, created = Author.objects.get_or_create(
+                name = name,
+            )
             if created: author.save()
             paper.authors.add( author )
             
-        node = soup.find('div', attrs={'class':'sponsors'})
-        if node:
-            for node in node.contents:
-                if isinstance( node, BeautifulSoup.NavigableString ):
-                    sponsor_name = html_strip( node.replace(':','') )
-                    if sponsor_name:
-                        sponsor, created = Sponsor.objects.get_or_create(
-                            name = sponsor_name,
-                        )
-                        if created: sponsor.save()
-                        paper.sponsors.add( sponsor )
-                    
-        for node in soup.find('a', attrs={'name':'references'}).parent.findNextSibling('table').findAll('tr'):
-            node = node.findAll('td')[2].div
-            if node.string:
-                reference, created = Reference.objects.get_or_create(
-                    line = html_strip(node.string),
-                    paper = paper,
-                )
-                if created: reference.save()
-            else:
-                line = ''
-                doi = ''
-                for a in node.findAll('a'):
-                    if a['href'].startswith('citation'):
-                        line = html_strip(a.string)
-                    if a['href'].startswith('http://dx.doi.org'):
-                        doi = html_strip(a.string)
-                reference, created = Reference.objects.get_or_create(
-                    line = line,
-                    doi = doi,
-                    paper = paper,
-                )
-                if created: reference.save()
-        
-        
-        for node in soup.findAll('a', attrs={'name':'FullText'}):
-            if node.contents[1]=='Pdf':
-                file_url = BASE_URL +'/'+ node['href']
+        for node in soup.findAll('a', attrs={'class':'bodyCopy'}):
+            if node.contents[0]=='PDF':
+                file_url = IEEE_BASE_URL + node['href']
                 print thread.get_ident(), 'downloading paper from', file_url
                 params = openanything.fetch(file_url)
                 if params['status']==200 or params['status']==302 :
@@ -378,11 +341,10 @@ def import_ieee_citation(params):
                 else:
                     print thread.get_ident(), 'error downloading paper:', params
         
-        print thread.get_ident(), 'paper =', paper
+        print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.authors.all()
+        main_gui.refresh_middle_pane_search()
     except:
         traceback.print_exc()
-    
-    print thread.get_ident(), 'done'
     
 
 class MainGUI:
@@ -756,7 +718,10 @@ class MainGUI:
                     icon = None
                 if paper.source:
                     journal = paper.source.name
-                    pub_year = paper.source.publication_date.year
+                    if paper.source.publication_date:
+                        pub_year = paper.source.publication_date.year
+                    else:
+                        pub_year = ''
                 else: 
                     journal = ''
                     pub_year = ''
@@ -838,7 +803,6 @@ class MainGUI:
             traceback.print_exc()
             
     def refresh_middle_pane_from_ieee(self):
-        print 'woot'
         if not self.ui.get_widget('middle_pane_search').get_text(): return
         rows = []
         try:
@@ -864,6 +828,7 @@ class MainGUI:
                             else:
                                 icon = None
                         except:
+                            #traceback.print_exc()
                             paper = None
                             paper_id = -1
                             icon = None
@@ -879,10 +844,11 @@ class MainGUI:
                             IEEE_BASE_URL + node.findAll('a', attrs={'class':'bodyCopySpaced'})[0]['href'], # import_url
                             '', # doi
                         )
-                        print thread.get_ident(), 'row =', row
+                        #print thread.get_ident(), 'row =', row
                         rows.append( row )
-                    except:
-                        traceback.print_exc()
+                    except: 
+                        pass
+                        #traceback.print_exc()
                     
                 self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
             else:
