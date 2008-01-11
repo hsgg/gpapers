@@ -455,7 +455,9 @@ class MainGUI:
         
         pane.connect('size-allocate', self.resize_paper_information_pane )
         
-        pane.append_column( gtk.TreeViewColumn("", gtk.CellRendererText(), markup=0) )
+        column = gtk.TreeViewColumn("", gtk.CellRendererText(), markup=0)
+        column.set_min_width(64)
+        pane.append_column( column )
 
         column = gtk.TreeViewColumn()
         renderer = gtk.CellRendererText()
@@ -534,6 +536,8 @@ class MainGUI:
         liststore, rows = selection.get_selected_rows()
         self.paper_information_pane_model.clear()
         self.ui.get_widget('paper_information_pane').columns_autosize()
+        paper_information_toolbar = self.ui.get_widget('paper_information_toolbar')
+        paper_information_toolbar.foreach( paper_information_toolbar.remove )
         print 'rows =', rows
         if len(rows)==0:
             pass
@@ -546,9 +550,6 @@ class MainGUI:
                 self.paper_information_pane_model.append(( '<b>Authors:</b>', liststore[rows[0]][1] ,))
             if liststore[rows[0]][3]:
                 self.paper_information_pane_model.append(( '<b>Journal:</b>', liststore[rows[0]][3] ,))
-            if liststore[rows[0]][8]:
-                print 'url', liststore[rows[0]][8]
-#                self.paper_information_pane_model.append(( '<b>URL:</b>', liststore[rows[0]][8] ,))
             if liststore[rows[0]][7]:
                 self.paper_information_pane_model.append(( '<b>Other:</b>', 'Full text saved in local library.' ,))
 #            if paper.source:
@@ -561,9 +562,18 @@ class MainGUI:
 #                description.append( ref.line )
             #self.ui.get_widget('paper_information_pane').get_buffer().set_text( '\n'.join(description) )
             
+            if liststore[rows[0]][8] and not paper:
+                print 'url', liststore[rows[0]][8]
+                button = gtk.ToolButton(gtk.STOCK_SAVE)
+                button.set_tooltip_markup('Save this paper to your library...')
+                button.connect( 'clicked', lambda x: fetch_citation_via_url(liststore[rows[0]][8]) )
+                paper_information_toolbar.insert( button, -1 )
+                paper_information_toolbar.show_all()
         else:
             self.paper_information_pane_model.append(( '<b>Number of papers:</b>', len(rows) ,))
         
+    def echo_objects(self, a=None, b=None, c=None):
+        print a,b,c
     
     def update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(self, rows):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
