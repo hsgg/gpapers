@@ -780,9 +780,17 @@ class MainGUI:
                         else:
                             first_author = authors
                         print 'first_author', first_author
-                        paper_id = -1
-                        try: paper_id = Paper.objects.get( title=title, authors__name__exact=first_author ).id
-                        except: pass
+                        try:
+                            paper = Paper.objects.get( title=title, authors__name__exact=first_author )
+                            paper_id = paper.id
+                            if os.path.isfile( paper.get_full_text_filename() ):
+                                icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
+                            else:
+                                icon = None
+                        except:
+                            paper = None
+                            paper_id = -1
+                            icon = None
                         row = ( 
                             paper_id, # paper id 
                             authors, # authors 
@@ -791,7 +799,7 @@ class MainGUI:
                             '', # year 
                             0, # ranking
                             '', # abstract
-                            file_in_library, # icon
+                            icon, # icon
                             IEEE_BASE_URL + node.findAll('a', attrs={'class':'bodyCopySpaced'})[0]['href'], # import_url
                         )
                         print thread.get_ident(), 'row =', row
