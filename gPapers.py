@@ -417,9 +417,11 @@ class MainGUI:
         
     def init_search_box(self):
         thread.start_new_thread( self.watch_middle_pane_search, () )
-        
-#        set_model_from_list( self.ui.get_widget('search_source'), ['My Library','ACM','IEEE'] )
-#        self.ui.get_widget('search_source').set_active(0)
+        self.ui.get_widget('refresh_middle_pane_search').connect( 'clicked', lambda x: self.refresh_middle_pane_search() )
+
+    def refresh_middle_pane_search(self):
+        self.last_middle_pane_search_string = None
+        print 'woot'
 
     def watch_middle_pane_search(self):
         self.last_middle_pane_search_string = ''
@@ -542,7 +544,7 @@ class MainGUI:
         if len(rows)==0:
             pass
         elif len(rows)==1:
-            try: paper = Paper.objects.find(id=liststore[rows[0]][0])
+            try: paper = Paper.objects.get(id=liststore[rows[0]][0])
             except: paper = None
             if liststore[rows[0]][2]:
                 self.paper_information_pane_model.append(( '<b>Title:</b>', liststore[rows[0]][2] ,))
@@ -591,37 +593,38 @@ class MainGUI:
             search_text = self.ui.get_widget('middle_pane_search').get_text()
             if search_text:
                 paper_ids = set()
-                for paper in Paper.objects.filter( title__icontains=search_text ):
-                    paper_ids.add( paper.id )
-                for paper in Paper.objects.filter( doi__icontains=search_text ):
-                    paper_ids.add( paper.id )
-                for paper in Paper.objects.filter( source_session__icontains=search_text ):
-                    paper_ids.add( paper.id )
-                for paper in Paper.objects.filter( abstract__icontains=search_text ):
-                    paper_ids.add( paper.id )
-                for sponsor in Sponsor.objects.filter( name__icontains=search_text ):
-                    for paper in sponsor.paper_set.all(): paper_ids.add( paper.id )
-                for author in Author.objects.filter( name__icontains=search_text ):
-                    for paper in author.paper_set.all(): paper_ids.add( paper.id )
-                for author in Author.objects.filter( location__icontains=search_text ):
-                    for paper in author.paper_set.all(): paper_ids.add( paper.id )
-                for author in Author.objects.filter( organization__icontains=search_text ):
-                    for paper in author.paper_set.all(): paper_ids.add( paper.id )
-                for author in Author.objects.filter( department__icontains=search_text ):
-                    for paper in author.paper_set.all(): paper_ids.add( paper.id )
-                for source in Source.objects.filter( name__icontains=search_text ):
-                    for paper in source.paper_set.all(): paper_ids.add( paper.id )
-                for source in Source.objects.filter( issue__icontains=search_text ):
-                    for paper in source.paper_set.all(): paper_ids.add( paper.id )
-                for source in Source.objects.filter( location__icontains=search_text ):
-                    for paper in source.paper_set.all(): paper_ids.add( paper.id )
-                for publisher in Publisher.objects.filter( name__icontains=search_text ):
-                    for source in publisher.source_set.all():
+                for s in search_text.split():
+                    for paper in Paper.objects.filter( title__icontains=s ):
+                        paper_ids.add( paper.id )
+                    for paper in Paper.objects.filter( doi__icontains=s ):
+                        paper_ids.add( paper.id )
+                    for paper in Paper.objects.filter( source_session__icontains=s ):
+                        paper_ids.add( paper.id )
+                    for paper in Paper.objects.filter( abstract__icontains=s ):
+                        paper_ids.add( paper.id )
+                    for sponsor in Sponsor.objects.filter( name__icontains=s ):
+                        for paper in sponsor.paper_set.all(): paper_ids.add( paper.id )
+                    for author in Author.objects.filter( name__icontains=s ):
+                        for paper in author.paper_set.all(): paper_ids.add( paper.id )
+                    for author in Author.objects.filter( location__icontains=s ):
+                        for paper in author.paper_set.all(): paper_ids.add( paper.id )
+                    for author in Author.objects.filter( organization__icontains=s ):
+                        for paper in author.paper_set.all(): paper_ids.add( paper.id )
+                    for author in Author.objects.filter( department__icontains=s ):
+                        for paper in author.paper_set.all(): paper_ids.add( paper.id )
+                    for source in Source.objects.filter( name__icontains=s ):
                         for paper in source.paper_set.all(): paper_ids.add( paper.id )
-                for reference in Reference.objects.filter( line__icontains=search_text ):
-                    paper_ids.add( reference.paper.id )
-                for reference in Reference.objects.filter( doi__icontains=search_text ):
-                    paper_ids.add( reference.paper.id )
+                    for source in Source.objects.filter( issue__icontains=s ):
+                        for paper in source.paper_set.all(): paper_ids.add( paper.id )
+                    for source in Source.objects.filter( location__icontains=s ):
+                        for paper in source.paper_set.all(): paper_ids.add( paper.id )
+                    for publisher in Publisher.objects.filter( name__icontains=s ):
+                        for source in publisher.source_set.all():
+                            for paper in source.paper_set.all(): paper_ids.add( paper.id )
+                    for reference in Reference.objects.filter( line__icontains=s ):
+                        paper_ids.add( reference.paper.id )
+                    for reference in Reference.objects.filter( doi__icontains=s ):
+                        paper_ids.add( reference.paper.id )
                 papers = Paper.objects.in_bulk( list(paper_ids) ).values()
             else:
                 papers = Paper.objects.all()
@@ -668,15 +671,27 @@ class MainGUI:
                 for node in parent_search_table_node.contents[0].findNextSiblings('tr'):
                     node = node.find('table')
                     tds = node.findAll('td')
+                    title = html_strip( tds[0].a.string )
+                    authors = html_strip( tds[0].div.string )
+                    if authors.find(','):
+                        first_author = authors[0:authors.find(',')]
+                    else:
+                        first_author = authors
+                    print 'first_author', first_author
+                    paper_id = -1
+                    try: paper_id = Paper.objects.get( title=title, authors__name__exact=first_author ).id
+                    except:
+                        traceback.print_exc()
+                        paper = None
                     row = ( 
-                        -1, # paper id 
-                        html_strip( tds[0].div.string ), # authors 
-                        html_strip( tds[0].a.string ), # title 
+                        paper_id, # paper id 
+                        authors, # authors 
+                        title, # title 
                         ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[3].div.contents if x.string] ), # journal 
                         html_strip( tds[1].string )[-4:], # year 
                         0, # ranking
                         ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[-1].findAll() if x.string] ), # abstract
-                        False, # file_in_library
+                        paper_id!=-1, # file_in_library
                         ACM_BASE_URL +'/'+ node.find('a')['href'], # import_url
                     )
                     #print thread.get_ident(), 'row =', row
