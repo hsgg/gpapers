@@ -36,9 +36,9 @@ class Source(models.Model):
 class Author(models.Model):
 
     name = models.CharField(max_length='1024')
-    location = models.CharField(max_length='1024')
-    organization = models.CharField(max_length='1024')
-    department = models.CharField(max_length='1024')
+    location = models.CharField(max_length='1024', blank=True)
+    organization = models.CharField(max_length='1024', blank=True)
+    department = models.CharField(max_length='1024', blank=True)
     imported = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 

@@ -174,10 +174,16 @@ def import_acm_citation(params):
             td1, td2 = node.findAll('td')
             org_and_location = td2.find('small')
             if org_and_location:
+                if org_and_location.string.find(',')>-1:
+                    organization = html_strip( org_and_location.string[0:org_and_location.string.index(',')] )
+                    location = html_strip( org_and_location.string[org_and_location.string.index(',')+1:] )
+                else:
+                    organization = html_strip(org_and_location)
+                    location = ''
                 author, created = Author.objects.get_or_create(
                     name = html_strip( td1.find('a').string ),
-                    organization = html_strip( org_and_location.string[0:org_and_location.string.index(',')] ),
-                    location = html_strip( org_and_location.string[org_and_location.string.index(',')+1:] ),
+                    organization = organization,
+                    location = location,
                 )
             else:
                 author, created = Author.objects.get_or_create(
@@ -237,12 +243,10 @@ def import_acm_citation(params):
                 else:
                     print thread.get_ident(), 'error downloading paper:', params
         
-        print thread.get_ident(), 'paper =', paper
-        main_gui.refresh_middle_top_pane_if_viewing_library()
+        print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.authors.all()
+        main_gui.refresh_middle_pane_search()
     except:
         traceback.print_exc()
-    
-    print thread.get_ident(), 'done'
 
 
 def import_ieee_citation(params):
@@ -416,10 +420,10 @@ class MainGUI:
     def init_search_box(self):
         thread.start_new_thread( self.watch_middle_pane_search, () )
         self.ui.get_widget('refresh_middle_pane_search').connect( 'clicked', lambda x: self.refresh_middle_pane_search() )
+        self.ui.get_widget('clear_middle_pane_search').connect( 'clicked', lambda x: self.ui.get_widget('middle_pane_search').set_text('') )
 
     def refresh_middle_pane_search(self):
         self.last_middle_pane_search_string = None
-        print 'woot'
 
     def watch_middle_pane_search(self):
         self.last_middle_pane_search_string = ''
@@ -696,14 +700,6 @@ class MainGUI:
         except:
             traceback.print_exc()
     
-    def refresh_middle_top_pane_if_viewing_library(self):
-        selection = self.ui.get_widget('left_pane').get_selection()
-        liststore, rows = selection.get_selected_rows()
-        if rows[0]==(0,):
-            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, () )
-        else:
-            self.refresh_my_library_count()
-       
     def refresh_my_library_count(self):
         gtk.gdk.threads_enter()
         selection = self.ui.get_widget('left_pane').get_selection()
@@ -728,7 +724,7 @@ class MainGUI:
                         first_author = authors[0:authors.find(',')]
                     else:
                         first_author = authors
-                    print 'first_author', first_author
+                    #print 'first_author', first_author
                     try:
                         paper = Paper.objects.get( title=title, authors__name__exact=first_author )
                         paper_id = paper.id
@@ -757,7 +753,7 @@ class MainGUI:
             else:
                 gtk.gdk.threads_enter()
                 error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
-                error.connect('response', lambda x,y: error.destroy())
+                #error.connect('response', lambda x,y: error.destroy())
                 error.set_markup('<b>Unable to Search External Repository</b>\n\nHTTP Error code: %i' % params['status'])
                 error.show()
                 gtk.gdk.threads_leave()
@@ -782,7 +778,7 @@ class MainGUI:
                             first_author = authors[0:authors.find(';')]
                         else:
                             first_author = authors
-                        print 'first_author', first_author
+                        #print 'first_author', first_author
                         try:
                             paper = Paper.objects.get( title=title, authors__name__exact=first_author )
                             paper_id = paper.id
