@@ -55,8 +55,9 @@ from django.template import defaultfilters
 os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 from gPapers.models import *
 
+
 p_whitespace = re.compile( '[\s]+')
-print p_whitespace.sub( ' ', 'derek    anderson' )
+
 def html_strip(s):
     return p_whitespace.sub( ' ', str(s).replace('&nbsp;', ' ').strip() )
 
@@ -101,12 +102,12 @@ def import_citation(url):
     try:
         params = openanything.fetch(url)
         if params['status']!=200 and params['status']!=302 :
-            gtk.gdk.threads_enter()
-            error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
-            error.connect('response', lambda x,y: error.destroy())
-            error.set_markup('<b>Unable to Download</b>\n\nHTTP Error code: %i' % params['status'])
-            error.show()
-            gtk.gdk.threads_leave()
+            print thread.get_ident(), 'unable to download: %s  (%i)' % ( url, params['status'] )
+#            gtk.gdk.threads_enter()
+#            error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
+#            error.set_markup('<b>Unable to Download Paper</b>\n\nThe following url:\n<i>%s</i>\n\nreturned the HTTP error code: %i' % ( url.replace('&', '&amp;'), params['status'] ))
+#            error.run()
+#            gtk.gdk.threads_leave()
             return
         if params['url'].startswith('http://portal.acm.org/citation'):
             import_acm_citation(params)
@@ -408,7 +409,7 @@ class MainGUI:
     def watch_middle_pane_search(self):
         self.last_middle_pane_search_string = ''
         while True:
-            if self.ui.get_widget('middle_pane_search').get_text()!=self.last_middle_pane_search_string:
+            if self.last_middle_pane_search_string==None or self.ui.get_widget('middle_pane_search').get_text()!=self.last_middle_pane_search_string:
                 self.last_middle_pane_search_string = self.ui.get_widget('middle_pane_search').get_text()
                 print 'new search string =', self.last_middle_pane_search_string
                 self.select_left_pane_item( self.ui.get_widget('left_pane') )
@@ -467,7 +468,7 @@ class MainGUI:
 #        self.left_pane_model.append( self.left_pane_model.get_iter((0,)), ( 'My Library', ) )
         self.left_pane_model.append( None, ( 'ACM', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_acm.ico' ) ) ) )
         self.left_pane_model.append( None, ( 'IEEE', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_ieee.ico' ) )  ) )
-        self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) )  ) )
+        #self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) )  ) )
 
     def select_left_pane_item(self, treeview):
         liststore, rows = treeview.get_selection().get_selected_rows()
