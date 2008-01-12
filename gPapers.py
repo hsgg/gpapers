@@ -388,6 +388,7 @@ class MainGUI:
         self.init_menu()
         self.init_search_box()
         self.init_left_pane()
+        self.init_my_library_filter_pane()
         self.init_middle_top_pane()
         self.init_paper_information_pane()
         self.refresh_left_pane()        
@@ -401,7 +402,12 @@ class MainGUI:
     def init_search_box(self):
         thread.start_new_thread( self.watch_middle_pane_search, () )
         self.ui.get_widget('refresh_middle_pane_search').connect( 'clicked', lambda x: self.refresh_middle_pane_search() )
-        self.ui.get_widget('clear_middle_pane_search').connect( 'clicked', lambda x: self.ui.get_widget('middle_pane_search').set_text('') )
+        self.ui.get_widget('clear_middle_pane_search').connect( 'clicked', lambda x: self.clear_all_search_and_filters() )
+        
+    def clear_all_search_and_filters(self):
+        self.ui.get_widget('middle_pane_search').set_text('')
+        self.ui.get_widget('author_filter').get_selection().unselect_all()
+        self.ui.get_widget('publisher_filter').get_selection().unselect_all()
 
     def refresh_middle_pane_search(self):
         self.last_middle_pane_search_string = None
@@ -412,7 +418,7 @@ class MainGUI:
             if self.last_middle_pane_search_string==None or self.ui.get_widget('middle_pane_search').get_text()!=self.last_middle_pane_search_string:
                 self.last_middle_pane_search_string = self.ui.get_widget('middle_pane_search').get_text()
                 print 'new search string =', self.last_middle_pane_search_string
-                self.select_left_pane_item( self.ui.get_widget('left_pane') )
+                self.select_left_pane_item( self.ui.get_widget('left_pane').get_selection() )
             time.sleep(1)
         
     def init_left_pane(self):
@@ -430,7 +436,36 @@ class MainGUI:
         column.pack_start(renderer, expand=True)
         column.add_attribute(renderer, 'markup', 0)
         
-        left_pane.connect('cursor-changed', self.select_left_pane_item)
+        left_pane.get_selection().connect('changed', self.select_left_pane_item)
+        
+    def init_my_library_filter_pane(self):
+        
+        author_filter = self.ui.get_widget('author_filter')
+        # id, author, org, dept
+        self.author_filter_model = gtk.ListStore( int, str, str, str )
+        author_filter.set_model( self.author_filter_model )
+        author_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
+        author_filter.append_column( gtk.TreeViewColumn("Author", gtk.CellRendererText(), text=1) )
+        author_filter.append_column( gtk.TreeViewColumn("Organization", gtk.CellRendererText(), text=2) )
+        author_filter.append_column( gtk.TreeViewColumn("Department", gtk.CellRendererText(), text=3) )
+
+        publisher_filter = self.ui.get_widget('publisher_filter')
+        # id, name
+        self.publisher_filter_model = gtk.ListStore( int, str )
+        publisher_filter.set_model( self.publisher_filter_model )
+        author_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
+        publisher_filter.append_column( gtk.TreeViewColumn("Publisher", gtk.CellRendererText(), text=1) )
+
+    def refresh_my_library_filter_pane(self):
+
+        self.author_filter_model.clear()
+        for author in Author.objects.all():
+            self.author_filter_model.append( ( author.id, author.name, author.organization, author.department ) )
+
+        self.publisher_filter_model.clear()
+        for publisher in Publisher.objects.all():
+            self.publisher_filter_model.append( ( publisher.id, publisher.name ) )
+
         
     def init_paper_information_pane(self):
         paper_notes = self.ui.get_widget('paper_notes')
@@ -470,20 +505,22 @@ class MainGUI:
         self.left_pane_model.append( None, ( 'IEEE', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_ieee.ico' ) )  ) )
         #self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) )  ) )
 
-    def select_left_pane_item(self, treeview):
-        liststore, rows = treeview.get_selection().get_selected_rows()
+    def select_left_pane_item(self, selection):
+        liststore, rows = selection.get_selected_rows()
         self.ui.get_widget('middle_pane_label').set_markup( liststore[rows[0]][0] )
         self.middle_top_pane_model.clear()
         print 'rows[0][0]', rows[0][0]
         if rows[0][0]==0:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, () )
+        else:
+            self.ui.get_widget('my_library_filter_pane').hide()
         if rows[0][0]==1:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_acm, () )
         if rows[0][0]==2:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_ieee, () )
         if rows[0][0]==3:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_pubmed, () )
-        self.select_middle_top_pane_item( self.ui.get_widget('middle_top_pane') )
+        self.select_middle_top_pane_item( self.ui.get_widget('middle_top_pane').get_selection() )
 
     def init_middle_top_pane(self):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
@@ -534,10 +571,9 @@ class MainGUI:
                 if renderer.__class__.__name__=='CellRendererText':
                     renderer.set_property( 'ellipsize', pango.ELLIPSIZE_END )
         
-        middle_top_pane.connect('cursor-changed', self.select_middle_top_pane_item)
+        middle_top_pane.get_selection().connect('changed', self.select_middle_top_pane_item)
         
-    def select_middle_top_pane_item(self, treeview):
-        selection = treeview.get_selection()
+    def select_middle_top_pane_item(self, selection):
         liststore, rows = selection.get_selected_rows()
         self.paper_information_pane_model.clear()
         self.ui.get_widget('paper_information_pane').columns_autosize()
@@ -673,6 +709,7 @@ class MainGUI:
             rows = []
             search_text = self.ui.get_widget('middle_pane_search').get_text()
             if search_text:
+                self.ui.get_widget('my_library_filter_pane').hide()
                 paper_ids = set()
                 for s in search_text.split():
                     for paper in Paper.objects.filter( title__icontains=s ):
@@ -708,6 +745,8 @@ class MainGUI:
                         paper_ids.add( reference.paper.id )
                 papers = Paper.objects.in_bulk( list(paper_ids) ).values()
             else:
+                self.refresh_my_library_filter_pane()
+                self.ui.get_widget('my_library_filter_pane').show_all()
                 papers = Paper.objects.all()
             for paper in papers:
                 authors = []
