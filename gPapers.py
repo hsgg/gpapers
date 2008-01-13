@@ -96,10 +96,14 @@ def fetch_citation_via_url(url):
     t = thread.start_new_thread( import_citation, (url,) )
     
 def fetch_citations_via_urls(urls):
-    for url in urls:
-        fetch_citation_via_url(url)
+    t = thread.start_new_thread( import_citations, (urls,) )
     
-def import_citation(url):
+def import_citations(urls):
+    for url in urls:
+        import_citation(url, refresh_after=False)
+    main_gui.refresh_middle_pane_search()
+    
+def import_citation(url, refresh_after=True):
     try:
         params = openanything.fetch(url)
         if params['status']!=200 and params['status']!=302 :
@@ -112,12 +116,15 @@ def import_citation(url):
             return
         if params['url'].startswith('http://portal.acm.org/citation'):
             import_acm_citation(params)
+            if refresh_after: main_gui.refresh_middle_pane_search()
             return
         if params['url'].startswith('http://ieeexplore.ieee.org'):
             if params['url'].find('search/wrapper.jsp')>-1:
                 import_ieee_citation( openanything.fetch( params['url'].replace('search/wrapper.jsp','xpls/abs_all.jsp') ) )
+                if refresh_after: main_gui.refresh_middle_pane_search()
             else:
                 import_ieee_citation( params )
+                if refresh_after: main_gui.refresh_middle_pane_search()
             return
     except:
         traceback.print_exc()
@@ -238,28 +245,23 @@ def import_acm_citation(params):
         if soup.find('a', attrs={'name':'references'}):
             for node in soup.find('a', attrs={'name':'references'}).parent.findNextSibling('table').findAll('tr'):
                 node = node.findAll('td')[2].div
-                if node.string:
-                    reference, created = Reference.objects.get_or_create(
-                        line_from_referencing_paper = html_strip(node.string),
-                        referencing_paper = paper,
-                    )
-                    if created: reference.save()
-                else:
-                    line = ''
-                    doi = ''
-                    for a in node.findAll('a'):
-                        if a['href'].startswith('citation'):
-                            line = html_strip(a.string)
-                            acm_referencing_url = ACM_BASE_URL +'/'+ a['href']
-                        if a['href'].startswith('http://dx.doi.org'):
-                            doi = html_strip(a.string)
-                    reference, created = Reference.objects.get_or_create(
-                        line_from_referencing_paper = line,
-                        acm_url_from_referencing_paper = acm_referencing_url,
-                        doi_from_referencing_paper = doi,
-                        referencing_paper = paper,
-                    )
-                    if created: reference.save()
+                line = None
+                doi = ''
+                acm_referencing_url = ''
+                for a in node.findAll('a'):
+                    if a['href'].startswith('citation'):
+                        line = html_strip(a.string)
+                        acm_referencing_url = ACM_BASE_URL +'/'+ a['href']
+                    if a['href'].startswith('http://dx.doi.org'):
+                        doi = html_strip(a.string)
+                if not line: line = html_strip(node.contents[0])
+                reference, created = Reference.objects.get_or_create(
+                    line_from_referencing_paper = line,
+                    acm_url_from_referencing_paper = acm_referencing_url,
+                    doi_from_referencing_paper = doi,
+                    referencing_paper = paper,
+                )
+                if created: reference.save()
         
         if soup.find('a', attrs={'name':'citings'}):
             for node in soup.find('a', attrs={'name':'citings'}).parent.findNextSibling('table').findAll('tr'):
@@ -305,7 +307,6 @@ def import_acm_citation(params):
                     print thread.get_ident(), 'error downloading paper:', params
         
         print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.authors.all()
-        main_gui.refresh_middle_pane_search()
     except:
         traceback.print_exc()
 
@@ -383,7 +384,6 @@ def import_ieee_citation(params):
                     print thread.get_ident(), 'error downloading paper:', params
         
         print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.authors.all()
-        main_gui.refresh_middle_pane_search()
     except:
         traceback.print_exc()
     
@@ -688,9 +688,17 @@ class MainGUI:
                     
             if paper:
                 references = paper.reference_set.all()
-                self.paper_information_pane_model.append(( '<b>References:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ references[i].line_from_referencing_paper for i in range(0,len(references)) ] ) ,))
+#                self.paper_information_pane_model.append(( '<b>References:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ references[i].line_from_referencing_paper for i in range(0,len(references)) ] ) ,))
+                for i in range(0,len(references)):
+                    if i==0: col1 = '<b>References:</b>'
+                    else: col1 = ''
+                    self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ references[i].line_from_referencing_paper ) )
                 citations = paper.citation_set.all()
-                self.paper_information_pane_model.append(( '<b>Citations:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ citations[i].line_from_referenced_paper for i in range(0,len(citations)) ] ) ,))
+#                self.paper_information_pane_model.append(( '<b>Citations:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ citations[i].line_from_referenced_paper for i in range(0,len(citations)) ] ) ,))
+                for i in range(0,len(citations)):
+                    if i==0: col1 = '<b>Citations:</b>'
+                    else: col1 = ''
+                    self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ citations[i].line_from_referenced_paper ) )
 
                 paper_notes.get_buffer().set_text( paper.notes )
                 paper_notes.set_property('sensitive', True)
@@ -783,9 +791,9 @@ class MainGUI:
                     for publisher in Publisher.objects.filter( name__icontains=s ):
                         for source in publisher.source_set.all():
                             for paper in source.paper_set.all(): paper_ids.add( paper.id )
-                    for reference in Reference.objects.filter( Q(referencing_line__icontains=s) | Q(referencing_doi__icontains=s) ):
+                    for reference in Reference.objects.filter( Q(line_from_referencing_paper__icontains=s) | Q(doi_from_referencing_paper__icontains=s) ):
                         paper_ids.add( reference.referencing_paper.id )
-                    for reference in Reference.objects.filter( Q(referenced_line__icontains=s) | Q(referenced_doi__icontains=s) ):
+                    for reference in Reference.objects.filter( Q(line_from_referenced_paper__icontains=s) | Q(doi_from_referenced_paper__icontains=s) ):
                         paper_ids.add( reference.referenced_paper.id )
                 papers = Paper.objects.in_bulk( list(paper_ids) ).values()
             else:
