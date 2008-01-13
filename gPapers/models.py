@@ -47,25 +47,11 @@ class Organization(models.Model):
         return self.name
     
     
-class Department(models.Model):
-
-    name = models.CharField(max_length='1024')
-    organziation = models.ForeignKey(Organization, null=True)
-    created = models.DateTimeField(auto_now_add=True)
-    updated = models.DateTimeField(auto_now=True)
-
-    class Admin:
-        list_display = ( 'id', 'name' )
-
-    def __unicode__(self):
-        return self.name
-    
-    
 class Author(models.Model):
 
     name = models.CharField(max_length='1024')
     location = models.CharField(max_length='1024', blank=True)
-    organization = models.ManyToManyField(Organization)
+    organizations = models.ManyToManyField(Organization)
     department = models.CharField(max_length='1024', blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)

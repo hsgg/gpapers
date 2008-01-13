@@ -96,6 +96,7 @@ def fetch_citation_via_url(url):
     t = thread.start_new_thread( import_citation, (url,) )
     
 def fetch_citations_via_urls(urls):
+    print 'trying to fetch:', urls
     t = thread.start_new_thread( import_citations, (urls,) )
     
 def import_citations(urls):
@@ -212,17 +213,19 @@ def import_acm_citation(params):
             org_and_location = td2.find('small')
             if org_and_location:
                 if org_and_location.string.find(',')>-1:
-                    organization = html_strip( org_and_location.string[0:org_and_location.string.index(',')] )
+                    organization_name = html_strip( org_and_location.string[0:org_and_location.string.index(',')] )
                     location = html_strip( org_and_location.string[org_and_location.string.index(',')+1:] )
                 else:
-                    organization = html_strip(org_and_location)
+                    organization_name = html_strip(org_and_location)
                     location = ''
-                print 'organization', organization
+                print 'organization', organization_name
+                organization, created = Organization.objects.get_or_create( name=organization_name )
+                if created: organization.save()
                 author, created = Author.objects.get_or_create(
                     name = html_strip( td1.find('a').string ),
-                    organization__name__exact=organization,
-#                    location = location,
                 )
+                author.organizations.add(organization)
+                author.save()
             else:
                 author, created = Author.objects.get_or_create(
                     name = html_strip( td1.find('a').string ),
@@ -265,7 +268,6 @@ def import_acm_citation(params):
         
         if soup.find('a', attrs={'name':'citings'}):
             for node in soup.find('a', attrs={'name':'citings'}).parent.findNextSibling('table').findAll('tr'):
-                print node.findAll('td')
                 node = node.findAll('td')[1].div
                 if node.string:
                     reference, created = Reference.objects.get_or_create(
@@ -297,10 +299,14 @@ def import_acm_citation(params):
                 print thread.get_ident(), 'downloading paper from', file_url
                 params = openanything.fetch(file_url)
                 if params['status']==200 or params['status']==302 :
-                    ext = params['url'][ params['url'].rfind('.')+1:]
-                    if not ext or len(ext)>5:
-                        ext = 'pdf'
-                    paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params['data'] )
+                    if params['data'].startswith('%PDF'):
+                        paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.pdf', params['data'] )
+                    else:
+                        print thread.get_ident(), 'this does not appear to be a pdf file...'
+                        ext = params['url'][ params['url'].rfind('.')+1:]
+                        if not ext or len(ext)>5:
+                            ext = 'unknown'
+                        paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params['data'] )
                     paper.save()
                     break
                 else:
@@ -481,27 +487,31 @@ class MainGUI:
     def init_my_library_filter_pane(self):
         
         author_filter = self.ui.get_widget('author_filter')
-        # id, author, org, dept
-        self.author_filter_model = gtk.ListStore( int, str, str, str )
+        # id, author
+        self.author_filter_model = gtk.ListStore( int, str )
         author_filter.set_model( self.author_filter_model )
         author_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         column = gtk.TreeViewColumn("Author", gtk.CellRendererText(), text=1)
-        column.set_min_width(128)
-        column.set_expand(True)
-        author_filter.append_column( column )
-        column = gtk.TreeViewColumn("Organization", gtk.CellRendererText(), text=2)
-        column.set_min_width(64)
-        column.set_expand(True)
-        author_filter.append_column( column )
-        column = gtk.TreeViewColumn("Department", gtk.CellRendererText(), text=3)
         column.set_min_width(64)
         column.set_expand(True)
         author_filter.append_column( column )
         self.make_all_columns_resizeable_clickable_ellipsize( author_filter.get_columns() )
 
+        organization_filter = self.ui.get_widget('organization_filter')
+        # id, org
+        self.organization_filter_model = gtk.ListStore( int, str )
+        organization_filter.set_model( self.organization_filter_model )
+        organization_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
+        column = gtk.TreeViewColumn("Organization", gtk.CellRendererText(), text=1)
+        column.set_min_width(64)
+        column.set_expand(True)
+        organization_filter.append_column( column )
+        self.make_all_columns_resizeable_clickable_ellipsize( organization_filter.get_columns() )
+
         publisher_filter = self.ui.get_widget('publisher_filter')
         # id, name
         self.publisher_filter_model = gtk.ListStore( int, str )
+        publisher_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         publisher_filter.set_model( self.publisher_filter_model )
         author_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         publisher_filter.append_column( gtk.TreeViewColumn("Publisher", gtk.CellRendererText(), text=1) )
@@ -511,7 +521,11 @@ class MainGUI:
 
         self.author_filter_model.clear()
         for author in Author.objects.all():
-            self.author_filter_model.append( ( author.id, author.name, author.organization, author.department ) )
+            self.author_filter_model.append( ( author.id, author.name ) )
+
+        self.organization_filter_model.clear()
+        for organization in Organization.objects.all():
+            self.organization_filter_model.append( ( organization.id, organization.name ) )
 
         self.publisher_filter_model.clear()
         for publisher in Publisher.objects.all():
@@ -639,7 +653,6 @@ class MainGUI:
         paper_notes.set_property('sensitive', False)
         paper_information_toolbar = self.ui.get_widget('paper_information_toolbar')
         paper_information_toolbar.foreach( paper_information_toolbar.remove )
-        print 'rows =', rows
         if len(rows)==0:
             pass
         elif len(rows)==1:
@@ -784,7 +797,7 @@ class MainGUI:
                         paper_ids.add( paper.id )
                     for sponsor in Sponsor.objects.filter( name__icontains=s ):
                         for paper in sponsor.paper_set.all(): paper_ids.add( paper.id )
-                    for author in Author.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) | Q(organization__name__icontains=s) | Q(department__icontains=s) ):
+                    for author in Author.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) | Q(organizations__name__icontains=s) ):
                         for paper in author.paper_set.all(): paper_ids.add( paper.id )
                     for source in Source.objects.filter( Q(name__icontains=s) | Q(issue__icontains=s) | Q(location__icontains=s) ):
                         for paper in source.paper_set.all(): paper_ids.add( paper.id )
