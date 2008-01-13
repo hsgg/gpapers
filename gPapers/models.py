@@ -5,7 +5,7 @@ from django.db import models
 class Publisher(models.Model):
 
     name = models.CharField(max_length='1024')
-    imported = models.DateTimeField(auto_now_add=True)
+    created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
     class Admin:
@@ -23,7 +23,7 @@ class Source(models.Model):
     location = models.CharField(max_length='1024', blank=True)
     publication_date = models.DateField(null=True)
     publisher = models.ForeignKey(Publisher, null=True)
-    imported = models.DateTimeField(auto_now_add=True)
+    created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
     class Admin:
@@ -33,17 +33,45 @@ class Source(models.Model):
         return self.name
 
 
+class Organization(models.Model):
+
+    name = models.CharField(max_length='1024')
+    location = models.CharField(max_length='1024', blank=True)
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Admin:
+        list_display = ( 'id', 'name', 'location' )
+
+    def __unicode__(self):
+        return self.name
+    
+    
+class Department(models.Model):
+
+    name = models.CharField(max_length='1024')
+    organziation = models.ForeignKey(Organization, null=True)
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Admin:
+        list_display = ( 'id', 'name' )
+
+    def __unicode__(self):
+        return self.name
+    
+    
 class Author(models.Model):
 
     name = models.CharField(max_length='1024')
     location = models.CharField(max_length='1024', blank=True)
-    organization = models.CharField(max_length='1024', blank=True)
+    organization = models.ManyToManyField(Organization)
     department = models.CharField(max_length='1024', blank=True)
-    imported = models.DateTimeField(auto_now_add=True)
+    created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
     class Admin:
-        list_display = ( 'id', 'name', 'location', 'organization', 'department' )
+        list_display = ( 'id', 'name', 'location' )
 
     def __unicode__(self):
         return self.name
@@ -52,7 +80,7 @@ class Author(models.Model):
 class Sponsor(models.Model):
 
     name = models.CharField(max_length='1024')
-    imported = models.DateTimeField(auto_now_add=True)
+    created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
     class Admin:
@@ -75,27 +103,36 @@ class Paper(models.Model):
     sponsors = models.ManyToManyField(Sponsor)
     full_text = models.FileField(upload_to=os.path.join('papers','%Y','%m'))
     rating = models.IntegerField(default=0)
-    imported = models.DateTimeField(auto_now_add=True)
+    created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     
     class Admin:
         list_display = ( 'id', 'doi', 'title' )
 
+    def __unicode__(self):
+        return 'Paper<%i: %s>' % ( self.id, ' '.join( [str(self.doi), str(self.title), str(self.authors.all())] ) )
+
 
 class Reference(models.Model):
 
-    paper = models.ForeignKey(Paper)
-    line = models.CharField(max_length='1024')
-    doi = models.CharField(max_length='1024', blank=True)
-    ieee_url = models.URLField()
-    imported = models.DateTimeField(auto_now_add=True)
+    referencing_paper = models.ForeignKey(Paper, null=True, blank=True)
+    referenced_paper = models.ForeignKey(Paper, null=True, blank=True, related_name='citation_set')
+    line_from_referencing_paper = models.CharField(max_length='1024', blank=True)
+    line_from_referenced_paper = models.CharField(max_length='1024', blank=True)
+    doi_from_referencing_paper = models.CharField(max_length='1024', blank=True)
+    doi_from_referenced_paper = models.CharField(max_length='1024', blank=True)
+    acm_url_from_referencing_paper = models.URLField(blank=True)
+    acm_url_from_referenced_paper = models.URLField(blank=True)
+    ieee_url_from_referencing_paper = models.URLField(blank=True)
+    ieee_url_from_referenced_paper = models.URLField(blank=True)
+    created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
     class Admin:
-        list_display = ( 'id', 'line', 'doi' )
+        list_display = ( 'id', 'line_from_referencing_paper', 'doi_from_referencing_paper', 'line_from_referenced_paper', 'doi_from_referenced_paper' )
 
     def __unicode__(self):
-        return self.line
+        return 'Reference<%s,%s>' % (str(self.referencing_paper), str(self.referenced_paper))
 
 
 class Bookmark(models.Model):

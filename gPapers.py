@@ -53,6 +53,7 @@ except:
 import settings
 from django.template import defaultfilters
 os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
+from django.db.models import Q
 from gPapers.models import *
 
 
@@ -138,7 +139,7 @@ def should_we_reimport_paper(paper):
     gtk.gdk.threads_enter()
     dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
     #dialog.connect('response', lambda x,y: dialog.destroy())
-    dialog.set_markup('This paper already exists in your local library:\n\n<i>"%s"</i>\n(imported on %s)\n\nShould we continue the import, updating/overwriting the previous entry?' % ( paper.title, str(paper.imported.date()) ))
+    dialog.set_markup('This paper already exists in your local library:\n\n<i>"%s"</i>\n(imported on %s)\n\nShould we continue the import, updating/overwriting the previous entry?' % ( paper.title, str(paper.created.date()) ))
     dialog.set_default_response(gtk.RESPONSE_OK)
     dialog.show_all()
     response = dialog.run()
@@ -153,7 +154,7 @@ def import_acm_citation(params):
         soup = BeautifulSoup.BeautifulSoup( params['data'] )
         
         title = []
-        for node in soup.find('a', attrs={'name':'FullText'}).parent.parent.parent.find('td').findAll('strong'):
+        for node in soup.findAll('td', attrs={'class':'medium-text'})[0].findAll('strong'):
             title.append(node.string)
         try: doi = str(soup.find('form', attrs={'name':'popbinder'}).nextSibling.table.findAll('tr')[-1].findAll('td')[-1].a.string)
         except: doi = ''
@@ -177,18 +178,26 @@ def import_acm_citation(params):
             name = html_strip(node.contents[1].string),
             issue = html_strip(node.contents[6].string),
             location = html_strip(node.contents[11].string),
-            publication_date = date( int( html_strip(node.contents[17].string).replace('Year of Publication: ','') ), 1, 1 ),
+            publication_date = date( int( html_strip( re.search( 'Year of Publication:(.*)', params['data'] ).group(1) ) ), 1, 1 ),
+#            publication_date = date( int( html_strip(node.contents[17].string).replace('Year of Publication: ','') ), 1, 1 ),
             publisher = publisher,
         )
         if created:
-            source.acm_toc_url = ACM_BASE_URL +'/'+ node.contents[8]['href']
+            for n in node.contents:
+                try:
+                    if n.name=='a' and n['href'].startswith('toc.cfm'):
+                        source.acm_toc_url = ACM_BASE_URL +'/'+ n['href']
+                except:
+                    pass
             source.save()
         
-        node = soup.find('strong', text='Source').parent.parent.nextSibling.nextSibling
         paper.source = source
-        paper.source_session = html_strip(node.contents[13].contents[0]).replace('SESSION: ','')
-        paper.source_pages = html_strip(node.contents[15].string).replace('Pages: ','')
-        paper.abstract = html_strip( soup.find('p', attrs={'class':'abstract'}).string )
+        try: paper.source_session = html_strip( re.search( 'SESSION:(.*)', params['data'] ).group(1) )
+        except: pass
+        try: paper.source_pages = html_strip( re.search( 'Pages:(.*)', params['data'] ).group(1) )
+        except: pass
+        try: paper.abstract = html_strip( soup.find('p', attrs={'class':'abstract'}).string )
+        except: pass
         paper.save()
         
         for node in soup.find('div', attrs={'class':'authors'}).findAll('tr'):
@@ -201,10 +210,11 @@ def import_acm_citation(params):
                 else:
                     organization = html_strip(org_and_location)
                     location = ''
+                print 'organization', organization
                 author, created = Author.objects.get_or_create(
                     name = html_strip( td1.find('a').string ),
-                    organization = organization,
-                    location = location,
+                    organization__name__exact=organization,
+#                    location = location,
                 )
             else:
                 author, created = Author.objects.get_or_create(
@@ -225,28 +235,58 @@ def import_acm_citation(params):
                         if created: sponsor.save()
                         paper.sponsors.add( sponsor )
                     
-        for node in soup.find('a', attrs={'name':'references'}).parent.findNextSibling('table').findAll('tr'):
-            node = node.findAll('td')[2].div
-            if node.string:
-                reference, created = Reference.objects.get_or_create(
-                    line = html_strip(node.string),
-                    paper = paper,
-                )
-                if created: reference.save()
-            else:
-                line = ''
-                doi = ''
-                for a in node.findAll('a'):
-                    if a['href'].startswith('citation'):
-                        line = html_strip(a.string)
-                    if a['href'].startswith('http://dx.doi.org'):
-                        doi = html_strip(a.string)
-                reference, created = Reference.objects.get_or_create(
-                    line = line,
-                    doi = doi,
-                    paper = paper,
-                )
-                if created: reference.save()
+        if soup.find('a', attrs={'name':'references'}):
+            for node in soup.find('a', attrs={'name':'references'}).parent.findNextSibling('table').findAll('tr'):
+                node = node.findAll('td')[2].div
+                if node.string:
+                    reference, created = Reference.objects.get_or_create(
+                        line_from_referencing_paper = html_strip(node.string),
+                        referencing_paper = paper,
+                    )
+                    if created: reference.save()
+                else:
+                    line = ''
+                    doi = ''
+                    for a in node.findAll('a'):
+                        if a['href'].startswith('citation'):
+                            line = html_strip(a.string)
+                            acm_referencing_url = ACM_BASE_URL +'/'+ a['href']
+                        if a['href'].startswith('http://dx.doi.org'):
+                            doi = html_strip(a.string)
+                    reference, created = Reference.objects.get_or_create(
+                        line_from_referencing_paper = line,
+                        acm_url_from_referencing_paper = acm_referencing_url,
+                        doi_from_referencing_paper = doi,
+                        referencing_paper = paper,
+                    )
+                    if created: reference.save()
+        
+        if soup.find('a', attrs={'name':'citings'}):
+            for node in soup.find('a', attrs={'name':'citings'}).parent.findNextSibling('table').findAll('tr'):
+                print node.findAll('td')
+                node = node.findAll('td')[1].div
+                if node.string:
+                    reference, created = Reference.objects.get_or_create(
+                        line_from_referenced_paper = html_strip(node.string),
+                        referenced_paper = paper,
+                    )
+                    if created: reference.save()
+                else:
+                    line = ''
+                    doi = ''
+                    for a in node.findAll('a'):
+                        if a['href'].startswith('citation'):
+                            line = html_strip(a.string)
+                            acm_url_from_referenced_paper = ACM_BASE_URL +'/'+ a['href']
+                        if a['href'].startswith('http://dx.doi.org'):
+                            doi = html_strip(a.string)
+                    reference, created = Reference.objects.get_or_create(
+                        line_from_referenced_paper = line,
+                        acm_url_from_referenced_paper = acm_url_from_referenced_paper,
+                        doi_from_referenced_paper = doi,
+                        referenced_paper = paper,
+                    )
+                    if created: reference.save()
         
         
         for node in soup.findAll('a', attrs={'name':'FullText'}):
@@ -445,9 +485,19 @@ class MainGUI:
         self.author_filter_model = gtk.ListStore( int, str, str, str )
         author_filter.set_model( self.author_filter_model )
         author_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
-        author_filter.append_column( gtk.TreeViewColumn("Author", gtk.CellRendererText(), text=1) )
-        author_filter.append_column( gtk.TreeViewColumn("Organization", gtk.CellRendererText(), text=2) )
-        author_filter.append_column( gtk.TreeViewColumn("Department", gtk.CellRendererText(), text=3) )
+        column = gtk.TreeViewColumn("Author", gtk.CellRendererText(), text=1)
+        column.set_min_width(128)
+        column.set_expand(True)
+        author_filter.append_column( column )
+        column = gtk.TreeViewColumn("Organization", gtk.CellRendererText(), text=2)
+        column.set_min_width(64)
+        column.set_expand(True)
+        author_filter.append_column( column )
+        column = gtk.TreeViewColumn("Department", gtk.CellRendererText(), text=3)
+        column.set_min_width(64)
+        column.set_expand(True)
+        author_filter.append_column( column )
+        self.make_all_columns_resizeable_clickable_ellipsize( author_filter.get_columns() )
 
         publisher_filter = self.ui.get_widget('publisher_filter')
         # id, name
@@ -455,6 +505,7 @@ class MainGUI:
         publisher_filter.set_model( self.publisher_filter_model )
         author_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         publisher_filter.append_column( gtk.TreeViewColumn("Publisher", gtk.CellRendererText(), text=1) )
+        self.make_all_columns_resizeable_clickable_ellipsize( publisher_filter.get_columns() )
 
     def refresh_my_library_filter_pane(self):
 
@@ -563,7 +614,12 @@ class MainGUI:
         column.set_expand(False)
         middle_top_pane.append_column( column )
         
-        for column in middle_top_pane.get_columns():
+        self.make_all_columns_resizeable_clickable_ellipsize( middle_top_pane.get_columns() )
+        
+        middle_top_pane.get_selection().connect('changed', self.select_middle_top_pane_item)
+
+    def make_all_columns_resizeable_clickable_ellipsize(self, columns):
+        for column in columns:
             column.set_resizable(True)
             column.set_clickable(True)
             #column.connect('clicked', self.sortRows)
@@ -571,7 +627,6 @@ class MainGUI:
                 if renderer.__class__.__name__=='CellRendererText':
                     renderer.set_property( 'ellipsize', pango.ELLIPSIZE_END )
         
-        middle_top_pane.get_selection().connect('changed', self.select_middle_top_pane_item)
         
     def select_middle_top_pane_item(self, selection):
         liststore, rows = selection.get_selected_rows()
@@ -632,6 +687,11 @@ class MainGUI:
                     paper_information_toolbar.insert( button, -1 )
                     
             if paper:
+                references = paper.reference_set.all()
+                self.paper_information_pane_model.append(( '<b>References:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ references[i].line_from_referencing_paper for i in range(0,len(references)) ] ) ,))
+                citations = paper.citation_set.all()
+                self.paper_information_pane_model.append(( '<b>Citations:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ citations[i].line_from_referenced_paper for i in range(0,len(citations)) ] ) ,))
+
                 paper_notes.get_buffer().set_text( paper.notes )
                 paper_notes.set_property('sensitive', True)
                 self.update_paper_notes_handler_id = paper_notes.get_buffer().connect('changed', self.update_paper_notes, paper.id )
@@ -712,41 +772,25 @@ class MainGUI:
                 self.ui.get_widget('my_library_filter_pane').hide()
                 paper_ids = set()
                 for s in search_text.split():
-                    for paper in Paper.objects.filter( title__icontains=s ):
-                        paper_ids.add( paper.id )
-                    for paper in Paper.objects.filter( doi__icontains=s ):
-                        paper_ids.add( paper.id )
-                    for paper in Paper.objects.filter( source_session__icontains=s ):
-                        paper_ids.add( paper.id )
-                    for paper in Paper.objects.filter( abstract__icontains=s ):
+                    for paper in Paper.objects.filter( Q(title__icontains=s) | Q(doi__icontains=s) | Q(source_session__icontains=s) | Q(abstract__icontains=s) ):
                         paper_ids.add( paper.id )
                     for sponsor in Sponsor.objects.filter( name__icontains=s ):
                         for paper in sponsor.paper_set.all(): paper_ids.add( paper.id )
-                    for author in Author.objects.filter( name__icontains=s ):
+                    for author in Author.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) | Q(organization__name__icontains=s) | Q(department__icontains=s) ):
                         for paper in author.paper_set.all(): paper_ids.add( paper.id )
-                    for author in Author.objects.filter( location__icontains=s ):
-                        for paper in author.paper_set.all(): paper_ids.add( paper.id )
-                    for author in Author.objects.filter( organization__icontains=s ):
-                        for paper in author.paper_set.all(): paper_ids.add( paper.id )
-                    for author in Author.objects.filter( department__icontains=s ):
-                        for paper in author.paper_set.all(): paper_ids.add( paper.id )
-                    for source in Source.objects.filter( name__icontains=s ):
-                        for paper in source.paper_set.all(): paper_ids.add( paper.id )
-                    for source in Source.objects.filter( issue__icontains=s ):
-                        for paper in source.paper_set.all(): paper_ids.add( paper.id )
-                    for source in Source.objects.filter( location__icontains=s ):
+                    for source in Source.objects.filter( Q(name__icontains=s) | Q(issue__icontains=s) | Q(location__icontains=s) ):
                         for paper in source.paper_set.all(): paper_ids.add( paper.id )
                     for publisher in Publisher.objects.filter( name__icontains=s ):
                         for source in publisher.source_set.all():
                             for paper in source.paper_set.all(): paper_ids.add( paper.id )
-                    for reference in Reference.objects.filter( line__icontains=s ):
-                        paper_ids.add( reference.paper.id )
-                    for reference in Reference.objects.filter( doi__icontains=s ):
-                        paper_ids.add( reference.paper.id )
+                    for reference in Reference.objects.filter( Q(referencing_line__icontains=s) | Q(referencing_doi__icontains=s) ):
+                        paper_ids.add( reference.referencing_paper.id )
+                    for reference in Reference.objects.filter( Q(referenced_line__icontains=s) | Q(referenced_doi__icontains=s) ):
+                        paper_ids.add( reference.referenced_paper.id )
                 papers = Paper.objects.in_bulk( list(paper_ids) ).values()
             else:
                 self.refresh_my_library_filter_pane()
-                self.ui.get_widget('my_library_filter_pane').show_all()
+                self.ui.get_widget('my_library_filter_pane').show()
                 papers = Paper.objects.all()
             for paper in papers:
                 authors = []
