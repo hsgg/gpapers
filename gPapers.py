@@ -99,9 +99,25 @@ def fetch_citations_via_urls(urls):
     print 'trying to fetch:', urls
     t = thread.start_new_thread( import_citations, (urls,) )
     
+def fetch_citations_via_references(references):
+    print 'trying to fetch:', references
+    t = thread.start_new_thread( import_citations_via_references, (references,) )
+    
 def import_citations(urls):
     for url in urls:
         import_citation(url, refresh_after=False)
+    main_gui.refresh_middle_pane_search()
+    
+def import_citations_via_references(references):
+    for reference in references:
+        if not reference.referenced_paper:
+            if reference.url_from_referencing_paper:
+                reference.referenced_paper = import_citation( reference.url_from_referencing_paper, refresh_after=False )
+                reference.save()
+        if not reference.referencing_paper:
+            if reference.url_from_referenced_paper:
+                reference.referenced_paper = import_citation( reference.url_from_referenced_paper, refresh_after=False )
+                reference.save()
     main_gui.refresh_middle_pane_search()
     
 def import_citation(url, refresh_after=True):
@@ -116,17 +132,17 @@ def import_citation(url, refresh_after=True):
 #            gtk.gdk.threads_leave()
             return
         if params['url'].startswith('http://portal.acm.org/citation'):
-            import_acm_citation(params)
+            paper = import_acm_citation(params)
             if refresh_after: main_gui.refresh_middle_pane_search()
-            return
+            return paper
         if params['url'].startswith('http://ieeexplore.ieee.org'):
             if params['url'].find('search/wrapper.jsp')>-1:
-                import_ieee_citation( openanything.fetch( params['url'].replace('search/wrapper.jsp','xpls/abs_all.jsp') ) )
+                paper = import_ieee_citation( openanything.fetch( params['url'].replace('search/wrapper.jsp','xpls/abs_all.jsp') ) )
                 if refresh_after: main_gui.refresh_middle_pane_search()
             else:
-                import_ieee_citation( params )
+                paper = import_ieee_citation( params )
                 if refresh_after: main_gui.refresh_middle_pane_search()
-            return
+            return paper
     except:
         traceback.print_exc()
         gtk.gdk.threads_enter()
@@ -157,6 +173,7 @@ def should_we_reimport_paper(paper):
 
 def import_acm_citation(params):
     print thread.get_ident(), 'downloading acm citation:', params['url']
+    paper = None
     try:
         print thread.get_ident(), 'parsing...'
         soup = BeautifulSoup.BeautifulSoup( params['data'] )
@@ -176,10 +193,13 @@ def import_acm_citation(params):
             if not should_we_reimport_paper(paper):
                 return
 
-        publisher, created = Publisher.objects.get_or_create(
-            name=html_strip( soup.find('div', attrs={'class':'publishers'}).contents[0] ),
-        )
-        if created: publisher.save()
+        try: publisher_name = html_strip( soup.find('div', attrs={'class':'publishers'}).contents[0] )
+        except: publisher_name = None
+        if publisher_name:
+            publisher, created = Publisher.objects.get_or_create( name=publisher_name )
+            if created: publisher.save()
+        else:
+            publisher = None
             
         node = soup.find('strong', text='Source').parent.parent.nextSibling.nextSibling
         source, created = Source.objects.get_or_create(
@@ -218,7 +238,6 @@ def import_acm_citation(params):
                 else:
                     organization_name = html_strip(org_and_location)
                     location = ''
-                print 'organization', organization_name
                 organization, created = Organization.objects.get_or_create( name=organization_name )
                 if created: organization.save()
                 author, created = Author.objects.get_or_create(
@@ -260,7 +279,7 @@ def import_acm_citation(params):
                 if not line: line = html_strip(node.contents[0])
                 reference, created = Reference.objects.get_or_create(
                     line_from_referencing_paper = line,
-                    acm_url_from_referencing_paper = acm_referencing_url,
+                    url_from_referencing_paper = acm_referencing_url,
                     doi_from_referencing_paper = doi,
                     referencing_paper = paper,
                 )
@@ -281,12 +300,12 @@ def import_acm_citation(params):
                     for a in node.findAll('a'):
                         if a['href'].startswith('citation'):
                             line = html_strip(a.string)
-                            acm_url_from_referenced_paper = ACM_BASE_URL +'/'+ a['href']
+                            url_from_referenced_paper = ACM_BASE_URL +'/'+ a['href']
                         if a['href'].startswith('http://dx.doi.org'):
                             doi = html_strip(a.string)
                     reference, created = Reference.objects.get_or_create(
                         line_from_referenced_paper = line,
-                        acm_url_from_referenced_paper = acm_url_from_referenced_paper,
+                        url_from_referenced_paper = url_from_referenced_paper,
                         doi_from_referenced_paper = doi,
                         referenced_paper = paper,
                     )
@@ -313,12 +332,16 @@ def import_acm_citation(params):
                     print thread.get_ident(), 'error downloading paper:', params
         
         print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.authors.all()
+        return paper
     except:
         traceback.print_exc()
+        if paper:
+            paper.delete()
 
 
 def import_ieee_citation(params):
     print thread.get_ident(), 'downloading ieee citation:', params['url']
+    paper = None
     try:
         print thread.get_ident(), 'parsing...'
         file = open('import.html','w')
@@ -390,8 +413,11 @@ def import_ieee_citation(params):
                     print thread.get_ident(), 'error downloading paper:', params
         
         print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.authors.all()
+        return paper
     except:
         traceback.print_exc()
+        if paper:
+            paper.delete()
     
 
 class MainGUI:
@@ -700,17 +726,23 @@ class MainGUI:
                     paper_information_toolbar.insert( button, -1 )
                     
             if paper:
+                importable_references = set()
                 references = paper.reference_set.all()
 #                self.paper_information_pane_model.append(( '<b>References:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ references[i].line_from_referencing_paper for i in range(0,len(references)) ] ) ,))
                 for i in range(0,len(references)):
                     if i==0: col1 = '<b>References:</b>'
                     else: col1 = ''
+                    if references[i].url_from_referencing_paper and not references[i].referenced_paper:
+                        importable_references.add( references[i] )
                     self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ references[i].line_from_referencing_paper ) )
+                importable_citations = set()
                 citations = paper.citation_set.all()
 #                self.paper_information_pane_model.append(( '<b>Citations:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ citations[i].line_from_referenced_paper for i in range(0,len(citations)) ] ) ,))
                 for i in range(0,len(citations)):
                     if i==0: col1 = '<b>Citations:</b>'
                     else: col1 = ''
+                    if citations[i].url_from_referenced_paper and not citations[i].referencing_paper:
+                        importable_citations.add( citations[i] )
                     self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ citations[i].line_from_referenced_paper ) )
 
                 paper_notes.get_buffer().set_text( paper.notes )
@@ -721,7 +753,23 @@ class MainGUI:
                 button.set_tooltip_markup('Remove this paper from your library...')
                 button.connect( 'clicked', lambda x: self.delete_papers([paper.id]) )
                 paper_information_toolbar.insert( button, -1 )
-                
+
+                if importable_references or importable_citations:
+                    import_button = gtk.MenuToolButton(gtk.STOCK_ADD)
+                    import_button.set_tooltip_markup('Import all cited and referenced documents...')
+                    import_button.connect( 'clicked', lambda x: fetch_citations_via_references( importable_references.union(importable_citations) ) )
+                    paper_information_toolbar.insert( import_button, -1 )
+                    import_button_menu = gtk.Menu()
+                    if importable_citations:
+                        menu_item = gtk.MenuItem('Import all cited documents...')
+                        menu_item.connect( 'activate', lambda x: fetch_citations_via_references( importable_citations ) )
+                        import_button_menu.append( menu_item )
+                    if importable_references:
+                        menu_item = gtk.MenuItem('Import all referenced documents...')
+                        menu_item.connect( 'activate', lambda x: fetch_citations_via_references( importable_references ) )
+                        import_button_menu.append( menu_item )
+                    import_button_menu.show_all()
+                    import_button.set_menu( import_button_menu )
             
         else:
             self.paper_information_pane_model.append(( '<b>Number of papers:</b>', len(rows) ,))

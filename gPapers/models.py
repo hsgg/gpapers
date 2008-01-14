@@ -107,10 +107,8 @@ class Reference(models.Model):
     line_from_referenced_paper = models.CharField(max_length='1024', blank=True)
     doi_from_referencing_paper = models.CharField(max_length='1024', blank=True)
     doi_from_referenced_paper = models.CharField(max_length='1024', blank=True)
-    acm_url_from_referencing_paper = models.URLField(blank=True)
-    acm_url_from_referenced_paper = models.URLField(blank=True)
-    ieee_url_from_referencing_paper = models.URLField(blank=True)
-    ieee_url_from_referenced_paper = models.URLField(blank=True)
+    url_from_referencing_paper = models.URLField(blank=True)
+    url_from_referenced_paper = models.URLField(blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
