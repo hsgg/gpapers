@@ -645,17 +645,33 @@ class MainGUI:
                 icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
             self.left_pane_model.append( self.left_pane_model.get_iter((2),), ( playlist.title, icon, playlist.id ) )
         #self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) )  ) )
+        left_pane.expand_all()
 
     def select_left_pane_item(self, selection):
         liststore, rows = selection.get_selected_rows()
-        if not rows: return
-        print 'rows', rows
-        print 'rows[0]', rows[0]
-        print 'rows[0][0]', rows[0][0]
+        left_pane_toolbar = self.ui.get_widget('left_pane_toolbar')
+        left_pane_toolbar.foreach( left_pane_toolbar.remove )
+        if not rows:
+            self.ui.get_widget('middle_pane_label').set_markup('<i>nothing selected</i>')
+            return
         self.ui.get_widget('middle_pane_label').set_markup( liststore[rows[0]][0] )
         self.middle_top_pane_model.clear()
-        try: playlist = Playlist.objects.get(id=liststore[rows[0]][2])
+
+        #button = gtk.ToolButton(gtk.STOCK_ADD)
+        #button.set_tooltip_markup('Create a new playlist...')
+        #button.connect( 'clicked', lambda x: True )
+        #button.show()
+        #left_pane_toolbar.insert( button, -1 )
+
+        try:
+            playlist = Playlist.objects.get(id=liststore[rows[0]][2])
+            button = gtk.ToolButton(gtk.STOCK_REMOVE)
+            button.set_tooltip_markup('Delete this playlist...')
+            button.connect( 'clicked', lambda x: self.delete_playlist(playlist.id) )
+            button.show()
+            left_pane_toolbar.insert( button, -1 )
         except: playlist = None
+        
         if playlist and playlist.search_text:
             self.last_middle_pane_search_string = playlist.search_text
             self.ui.get_widget('middle_pane_search').set_text( playlist.search_text )
@@ -895,7 +911,6 @@ class MainGUI:
         
     def delete_papers(self, ids):
         papers = Paper.objects.in_bulk(ids).values()
-        print papers
         paper_list_text = '\n'.join([ ('<i>"%s"</i>' % str(paper.title)) for paper in papers ])
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
         dialog.set_markup('Really delete the following %s?\n\n%s\n\n' % ( humanize_count( len(papers), 'paper', 'papers', places=-1 ), paper_list_text ))
@@ -908,6 +923,17 @@ class MainGUI:
                 print 'deleting paper:', paper.doi, paper.title, paper.authors.all()
                 paper.delete()
             self.refresh_middle_pane_search()
+            
+    def delete_playlist(self, id):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this playlist?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            Playlist.objects.get(id=id).delete()
+            self.refresh_left_pane()
     
     def update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(self, rows):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
