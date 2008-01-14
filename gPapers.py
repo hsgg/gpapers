@@ -156,14 +156,14 @@ def import_citation(url, refresh_after=True):
         error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
         error.connect('response', lambda x,y: error.destroy())
         error.set_markup('<b>Unknown Error</b>\n\nUnable to download this resource.')
-        error.show()
+        error.run()
         gtk.gdk.threads_leave()
 
     gtk.gdk.threads_enter()
     error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
     error.connect('response', lambda x,y: error.destroy())
     error.set_markup('<b>Unknown Source</b>\n\nThis URL is from an unknown citation source.')
-    error.show()
+    error.run()
     gtk.gdk.threads_leave()
     
 def should_we_reimport_paper(paper):
@@ -252,6 +252,7 @@ def import_acm_citation(params):
                 )
                 author.organizations.add(organization)
                 author.save()
+                paper.organizations.add(organization)
             else:
                 author, created = Author.objects.get_or_create(
                     name = html_strip( td1.find('a').string ),
@@ -338,6 +339,7 @@ def import_acm_citation(params):
                 else:
                     print thread.get_ident(), 'error downloading paper:', params
         
+        paper.save()
         print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.authors.all()
         return paper
     except:
@@ -486,7 +488,8 @@ class MainGUI:
     def clear_all_search_and_filters(self):
         self.ui.get_widget('middle_pane_search').set_text('')
         self.ui.get_widget('author_filter').get_selection().unselect_all()
-        self.ui.get_widget('publisher_filter').get_selection().unselect_all()
+        self.ui.get_widget('source_filter').get_selection().unselect_all()
+        self.ui.get_widget('organization_filter').get_selection().unselect_all()
 
     def refresh_middle_pane_search(self):
         self.last_middle_pane_search_string = None
@@ -525,10 +528,11 @@ class MainGUI:
         author_filter.set_model( self.author_filter_model )
         author_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         column = gtk.TreeViewColumn("Author", gtk.CellRendererText(), text=1)
-        column.set_min_width(64)
+        column.set_min_width(128)
         column.set_expand(True)
         author_filter.append_column( column )
         self.make_all_columns_resizeable_clickable_ellipsize( author_filter.get_columns() )
+        author_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
 
         organization_filter = self.ui.get_widget('organization_filter')
         # id, org
@@ -536,19 +540,26 @@ class MainGUI:
         organization_filter.set_model( self.organization_filter_model )
         organization_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         column = gtk.TreeViewColumn("Organization", gtk.CellRendererText(), text=1)
-        column.set_min_width(64)
+        column.set_min_width(128)
         column.set_expand(True)
         organization_filter.append_column( column )
         self.make_all_columns_resizeable_clickable_ellipsize( organization_filter.get_columns() )
+        organization_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
 
-        publisher_filter = self.ui.get_widget('publisher_filter')
-        # id, name
-        self.publisher_filter_model = gtk.ListStore( int, str )
-        publisher_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
-        publisher_filter.set_model( self.publisher_filter_model )
-        author_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
-        publisher_filter.append_column( gtk.TreeViewColumn("Publisher", gtk.CellRendererText(), text=1) )
-        self.make_all_columns_resizeable_clickable_ellipsize( publisher_filter.get_columns() )
+        source_filter = self.ui.get_widget('source_filter')
+        # id, name, issue, location, publisher, date
+        self.source_filter_model = gtk.ListStore( int, str, str, str, str, str )
+        source_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
+        source_filter.set_model( self.source_filter_model )
+        column = gtk.TreeViewColumn("Source", gtk.CellRendererText(), text=1)
+        column.set_min_width(128)
+        column.set_expand(True)
+        source_filter.append_column( column )
+        source_filter.append_column( gtk.TreeViewColumn("Issue", gtk.CellRendererText(), text=2) )
+        source_filter.append_column( gtk.TreeViewColumn("Location", gtk.CellRendererText(), text=3) )
+        source_filter.append_column( gtk.TreeViewColumn("Publisher", gtk.CellRendererText(), text=4) )
+        self.make_all_columns_resizeable_clickable_ellipsize( source_filter.get_columns() )
+        source_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
 
     def refresh_my_library_filter_pane(self):
 
@@ -560,9 +571,9 @@ class MainGUI:
         for organization in Organization.objects.all():
             self.organization_filter_model.append( ( organization.id, organization.name ) )
 
-        self.publisher_filter_model.clear()
-        for publisher in Publisher.objects.all():
-            self.publisher_filter_model.append( ( publisher.id, publisher.name ) )
+        self.source_filter_model.clear()
+        for source in Source.objects.all():
+            self.source_filter_model.append( ( source.id, source.name, source.issue, source.location, source.publisher, source.publication_date ) )
 
         
     def init_paper_information_pane(self):
@@ -868,12 +879,13 @@ class MainGUI:
             middle_top_pane.columns_autosize()
             gtk.gdk.threads_leave()
 
-    def refresh_middle_pane_from_my_library(self):
+    def refresh_middle_pane_from_my_library(self, refresh_library_filter_pane=True):
         try:
             rows = []
             search_text = self.ui.get_widget('middle_pane_search').get_text()
+            my_library_filter_pane = self.ui.get_widget('my_library_filter_pane')
             if search_text:
-                self.ui.get_widget('my_library_filter_pane').hide()
+                my_library_filter_pane.hide()
                 paper_ids = set()
                 for s in search_text.split():
                     for paper in Paper.objects.filter( Q(title__icontains=s) | Q(doi__icontains=s) | Q(source_session__icontains=s) | Q(abstract__icontains=s) ):
@@ -893,9 +905,34 @@ class MainGUI:
                         paper_ids.add( reference.referenced_paper.id )
                 papers = Paper.objects.in_bulk( list(paper_ids) ).values()
             else:
-                self.refresh_my_library_filter_pane()
-                self.ui.get_widget('my_library_filter_pane').show()
-                papers = Paper.objects.all()
+                if refresh_library_filter_pane:
+                    self.refresh_my_library_filter_pane()
+                    my_library_filter_pane.show()
+                paper_query = Paper.objects.all()
+
+                filter_liststore, filter_rows = self.ui.get_widget('author_filter').get_selection().get_selected_rows()
+                q = None
+                for filter_row in filter_rows:
+                    if q==None: q = Q(authors__id=filter_liststore[filter_row][0])
+                    else: q = q | Q(authors__id=filter_liststore[filter_row][0])
+                if q: paper_query = paper_query.filter(q)
+                
+                filter_liststore, filter_rows = self.ui.get_widget('source_filter').get_selection().get_selected_rows()
+                q = None
+                for filter_row in filter_rows:
+                    if q==None: q = Q(source__id=filter_liststore[filter_row][0])
+                    else: q = q | Q(source__id=filter_liststore[filter_row][0])
+                if q: paper_query = paper_query.filter(q)
+                
+                filter_liststore, filter_rows = self.ui.get_widget('organization_filter').get_selection().get_selected_rows()
+                q = None
+                for filter_row in filter_rows:
+                    if q==None: q = Q(organizations__id=filter_liststore[filter_row][0])
+                    else: q = q | Q(organizations__id=filter_liststore[filter_row][0])
+                if q: paper_query = paper_query.filter(q)
+                
+                papers = paper_query
+                    
             for paper in papers:
                 authors = []
                 for author in paper.authors.order_by('id'):
@@ -985,7 +1022,7 @@ class MainGUI:
                 error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
                 #error.connect('response', lambda x,y: error.destroy())
                 error.set_markup('<b>Unable to Search External Repository</b>\n\nHTTP Error code: %i' % params['status'])
-                error.show()
+                error.run()
                 gtk.gdk.threads_leave()
         except:
             traceback.print_exc()
@@ -1044,7 +1081,7 @@ class MainGUI:
                 error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
                 error.connect('response', lambda x,y: error.destroy())
                 error.set_markup('<b>Unable to Search External Repository</b>\n\nHTTP Error code: %i' % params['status'])
-                error.show()
+                error.run()
                 gtk.gdk.threads_leave()
         except:
             traceback.print_exc()

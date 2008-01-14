@@ -87,6 +87,7 @@ class Paper(models.Model):
     notes = models.TextField(blank=True)
     authors = models.ManyToManyField(Author)
     sponsors = models.ManyToManyField(Sponsor)
+    organizations = models.ManyToManyField(Organization)
     full_text = models.FileField(upload_to=os.path.join('papers','%Y','%m'))
     rating = models.IntegerField(default=0)
     created = models.DateTimeField(auto_now_add=True)
