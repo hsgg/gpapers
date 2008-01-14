@@ -484,12 +484,24 @@ class MainGUI:
         thread.start_new_thread( self.watch_middle_pane_search, () )
         self.ui.get_widget('refresh_middle_pane_search').connect( 'clicked', lambda x: self.refresh_middle_pane_search() )
         self.ui.get_widget('clear_middle_pane_search').connect( 'clicked', lambda x: self.clear_all_search_and_filters() )
+        self.ui.get_widget('save_smart_search').connect( 'clicked', lambda x: self.save_smart_search() )
         
     def clear_all_search_and_filters(self):
         self.ui.get_widget('middle_pane_search').set_text('')
         self.ui.get_widget('author_filter').get_selection().unselect_all()
         self.ui.get_widget('source_filter').get_selection().unselect_all()
         self.ui.get_widget('organization_filter').get_selection().unselect_all()
+        
+    def save_smart_search(self):
+        liststore, rows = self.ui.get_widget('left_pane').get_selection().get_selected_rows()
+        playlist, created = Playlist.objects.get_or_create(
+            title = 'search: <i>%s</i>' % self.ui.get_widget('middle_pane_search').get_text(),
+            search_text = self.ui.get_widget('middle_pane_search').get_text(),
+            parent = str(rows[0][0])
+        )
+        if created: playlist.save()
+        self.refresh_left_pane()
+        
 
     def refresh_middle_pane_search(self):
         self.last_middle_pane_search_string = None
@@ -500,13 +512,16 @@ class MainGUI:
             if self.last_middle_pane_search_string==None or self.ui.get_widget('middle_pane_search').get_text()!=self.last_middle_pane_search_string:
                 self.last_middle_pane_search_string = self.ui.get_widget('middle_pane_search').get_text()
                 print 'new search string =', self.last_middle_pane_search_string
-                self.select_left_pane_item( self.ui.get_widget('left_pane').get_selection() )
+                selection = self.ui.get_widget('left_pane').get_selection()
+                liststore, rows = selection.get_selected_rows()
+                selection.unselect_all()
+                selection.select_path( (rows[0][0],) )
             time.sleep(1)
         
     def init_left_pane(self):
         left_pane = self.ui.get_widget('left_pane')
-        # name, icon
-        self.left_pane_model = gtk.TreeStore( str, gtk.gdk.Pixbuf, )
+        # name, icon, playlist_id
+        self.left_pane_model = gtk.TreeStore( str, gtk.gdk.Pixbuf, int )
         left_pane.set_model( self.left_pane_model )
         
         column = gtk.TreeViewColumn()
@@ -608,19 +623,44 @@ class MainGUI:
     def refresh_left_pane(self):
         left_pane = self.ui.get_widget('left_pane')
         self.left_pane_model.clear()
-        self.left_pane_model.append( None, ( '<b>My Library</b>', left_pane.render_icon(gtk.STOCK_HOME, gtk.ICON_SIZE_MENU) ) )
-#        self.left_pane_model.append( self.left_pane_model.get_iter((0,)), ( 'My Library', ) )
-        self.left_pane_model.append( None, ( 'ACM', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_acm.ico' ) ) ) )
-        self.left_pane_model.append( None, ( 'IEEE', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_ieee.ico' ) )  ) )
+        self.left_pane_model.append( None, ( '<b>My Library</b>', left_pane.render_icon(gtk.STOCK_HOME, gtk.ICON_SIZE_MENU), -1 ) )
+        for playlist in Playlist.objects.filter(parent='0'):
+            if playlist.search_text:
+                icon = left_pane.render_icon(gtk.STOCK_FIND, gtk.ICON_SIZE_MENU)
+            else:
+                icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
+            self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( playlist.title, icon, playlist.id ) )
+        self.left_pane_model.append( None, ( 'ACM', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_acm.ico' ) ), -1 ) )
+        for playlist in Playlist.objects.filter(parent='1'):
+            if playlist.search_text:
+                icon = left_pane.render_icon(gtk.STOCK_FIND, gtk.ICON_SIZE_MENU)
+            else:
+                icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
+            self.left_pane_model.append( self.left_pane_model.get_iter((1),), ( playlist.title, icon, playlist.id ) )
+        self.left_pane_model.append( None, ( 'IEEE', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_ieee.ico' ) ), -1  ) )
+        for playlist in Playlist.objects.filter(parent='2'):
+            if playlist.search_text:
+                icon = left_pane.render_icon(gtk.STOCK_FIND, gtk.ICON_SIZE_MENU)
+            else:
+                icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
+            self.left_pane_model.append( self.left_pane_model.get_iter((2),), ( playlist.title, icon, playlist.id ) )
         #self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) )  ) )
 
     def select_left_pane_item(self, selection):
         liststore, rows = selection.get_selected_rows()
+        if not rows: return
+        print 'rows', rows
+        print 'rows[0]', rows[0]
+        print 'rows[0][0]', rows[0][0]
         self.ui.get_widget('middle_pane_label').set_markup( liststore[rows[0]][0] )
         self.middle_top_pane_model.clear()
-        print 'rows[0][0]', rows[0][0]
+        try: playlist = Playlist.objects.get(id=liststore[rows[0]][2])
+        except: playlist = None
+        if playlist and playlist.search_text:
+            self.last_middle_pane_search_string = playlist.search_text
+            self.ui.get_widget('middle_pane_search').set_text( playlist.search_text )
         if rows[0][0]==0:
-            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, () )
+            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, (True, liststore[rows[0]][2]) )
         else:
             self.ui.get_widget('my_library_filter_pane').hide()
         if rows[0][0]==1:
@@ -879,7 +919,7 @@ class MainGUI:
             middle_top_pane.columns_autosize()
             gtk.gdk.threads_leave()
 
-    def refresh_middle_pane_from_my_library(self, refresh_library_filter_pane=True):
+    def refresh_middle_pane_from_my_library(self, refresh_library_filter_pane=True, playlist_id=-1):
         try:
             rows = []
             search_text = self.ui.get_widget('middle_pane_search').get_text()

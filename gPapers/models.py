@@ -135,3 +135,24 @@ class Bookmark(models.Model):
         return self.notes
 
 
+class Playlist(models.Model):
+
+    SOURCES = (
+        ('0', 'My Library'),
+        ('1', 'ACM'),
+        ('2', 'IEEE'),
+    )
+    title = models.CharField(max_length='1024', blank=True)
+    search_text = models.CharField(max_length='1024', blank=True)
+    parent = models.CharField(max_length=1, choices=SOURCES)
+    papers = models.ManyToManyField(Paper)
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Admin:
+        list_display = ( 'id', 'title', 'parent', 'search_text' )
+
+    def __unicode__(self):
+        return self.title
+
+
