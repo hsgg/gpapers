@@ -81,6 +81,13 @@ def humanize_count(x, s, p, places=1):
         output.append(p)
     return ' '.join(output)
 
+def truncate_long_str(s, max_length=96):
+    s = str(s)
+    if len(s)<max_length:
+        return s
+    else:
+        return s[0:max_length] + '...'
+
 def set_model_from_list(cb, items, index=None):
     """Setup a ComboBox or ComboBoxEntry based on a list of strings, or a list of tuples with the index param."""           
     model = gtk.ListStore(str)
@@ -656,7 +663,19 @@ class MainGUI:
         
         self.make_all_columns_resizeable_clickable_ellipsize( middle_top_pane.get_columns() )
         
+        middle_top_pane.connect('row-activated', self.handle_middle_top_pane_row_activated )
         middle_top_pane.get_selection().connect('changed', self.select_middle_top_pane_item)
+    
+    def handle_middle_top_pane_row_activated(self, treeview, path, view_column):
+        liststore, rows = treeview.get_selection().get_selected_rows()
+        paper_id = treeview.get_model().get_value( treeview.get_model().get_iter(path), 0 )
+        print 'paper_id', paper_id
+        try:
+            paper = Paper.objects.get(id=paper_id)
+            if paper.full_text:
+                desktop.open( paper.get_full_text_filename() )
+        except:
+            traceback.print_exc()
 
     def make_all_columns_resizeable_clickable_ellipsize(self, columns):
         for column in columns:
@@ -756,17 +775,33 @@ class MainGUI:
 
                 if importable_references or importable_citations:
                     import_button = gtk.MenuToolButton(gtk.STOCK_ADD)
-                    import_button.set_tooltip_markup('Import all cited and referenced documents...')
+                    import_button.set_tooltip_markup('Import all cited and referenced documents...(%i)' % len(importable_references.union(importable_citations)) )
                     import_button.connect( 'clicked', lambda x: fetch_citations_via_references( importable_references.union(importable_citations) ) )
                     paper_information_toolbar.insert( import_button, -1 )
                     import_button_menu = gtk.Menu()
                     if importable_citations:
-                        menu_item = gtk.MenuItem('Import all cited documents...')
+                        menu_item = gtk.MenuItem('Import all cited documents (%i)' % len(importable_citations) )
                         menu_item.connect( 'activate', lambda x: fetch_citations_via_references( importable_citations ) )
                         import_button_menu.append( menu_item )
+                        menu_item = gtk.MenuItem('Import specific cited document')
+                        import_button_submenu = gtk.Menu()
+                        for citation in importable_citations:
+                            submenu_item = gtk.MenuItem( truncate_long_str(citation.line_from_referenced_paper) )
+                            submenu_item.connect( 'activate', lambda x: fetch_citations_via_references( (citation,) ) )
+                            import_button_submenu.append( submenu_item )
+                        menu_item.set_submenu(import_button_submenu)
+                        import_button_menu.append( menu_item )
                     if importable_references:
-                        menu_item = gtk.MenuItem('Import all referenced documents...')
+                        menu_item = gtk.MenuItem('Import all referenced documents (%i)' % len(importable_references) )
                         menu_item.connect( 'activate', lambda x: fetch_citations_via_references( importable_references ) )
+                        import_button_menu.append( menu_item )
+                        menu_item = gtk.MenuItem('Import specific referenced document')
+                        import_button_submenu = gtk.Menu()
+                        for reference in importable_references:
+                            submenu_item = gtk.MenuItem( truncate_long_str(reference.line_from_referencing_paper) )
+                            submenu_item.connect( 'activate', lambda x: fetch_citations_via_references( (reference,) ) )
+                            import_button_submenu.append( submenu_item )
+                        menu_item.set_submenu(import_button_submenu)
                         import_button_menu.append( menu_item )
                     import_button_menu.show_all()
                     import_button.set_menu( import_button_menu )

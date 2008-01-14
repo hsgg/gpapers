@@ -113,7 +113,7 @@ class Reference(models.Model):
     updated = models.DateTimeField(auto_now=True)
 
     class Admin:
-        list_display = ( 'id', 'line_from_referencing_paper', 'doi_from_referencing_paper', 'line_from_referenced_paper', 'doi_from_referenced_paper' )
+        list_display = ( 'id', 'referencing_paper', 'line_from_referencing_paper', 'doi_from_referencing_paper', 'referenced_paper', 'line_from_referenced_paper', 'doi_from_referenced_paper' )
 
     def __unicode__(self):
         return 'Reference<%s,%s>' % (str(self.referencing_paper), str(self.referenced_paper))
