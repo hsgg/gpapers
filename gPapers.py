@@ -958,10 +958,13 @@ class MainGUI:
                         paper_ids.add( paper.id )
                     for sponsor in Sponsor.objects.filter( name__icontains=s ):
                         for paper in sponsor.paper_set.all(): paper_ids.add( paper.id )
-                    for author in Author.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) | Q(organizations__name__icontains=s) ):
+                    print list(Author.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) ) )
+                    for author in Author.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) ):
                         for paper in author.paper_set.all(): paper_ids.add( paper.id )
                     for source in Source.objects.filter( Q(name__icontains=s) | Q(issue__icontains=s) | Q(location__icontains=s) ):
                         for paper in source.paper_set.all(): paper_ids.add( paper.id )
+                    for organization in Organization.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) ):
+                        for paper in organization.paper_set.all(): paper_ids.add( paper.id )
                     for publisher in Publisher.objects.filter( name__icontains=s ):
                         for source in publisher.source_set.all():
                             for paper in source.paper_set.all(): paper_ids.add( paper.id )
@@ -997,7 +1000,7 @@ class MainGUI:
                     else: q = q | Q(organizations__id=filter_liststore[filter_row][0])
                 if q: paper_query = paper_query.filter(q)
                 
-                papers = paper_query
+                papers = paper_query.distinct()
                     
             for paper in papers:
                 authors = []
