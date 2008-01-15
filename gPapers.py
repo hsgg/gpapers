@@ -18,7 +18,6 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 import commands, dircache, getopt, math, pwd, os, re, string, sys, thread, threading, time, traceback
-import desktop, openanything
 from datetime import date, datetime
 from time import strptime
 #from BeautifulSoup 
@@ -92,6 +91,7 @@ except:
 
 
 import settings
+import desktop, openanything
 from django.template import defaultfilters
 os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 from django.db.models import Q
