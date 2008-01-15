@@ -1229,7 +1229,7 @@ class MainGUI:
 
 def init_db():
     import django.core.management.commands.syncdb
-    django.core.management.commands.syncdb.Command().handle_noargs()
+    django.core.management.commands.syncdb.Command().handle_noargs(interactive=True)
     for app in models.get_apps():
         app_name = app.__name__.split('.')[-2]
         if app_name=='gPapers':
