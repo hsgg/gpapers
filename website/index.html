@@ -1,0 +1,63 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<title>gPapers - iTunes for your PDFs</title>
+</head>
+<style>
+
+body {
+	width: 682px;
+}
+p { 
+	margin: 16px;
+}
+
+</style>
+<body>
+
+<center><img src="header.jpg" border="0" alt=""></center>
+
+<img src="Screenshot-gPapers_reflect.png" width="300" height="243" border="0" alt="" align="right" style="padding:20px;">
+
+<h1>Welcome...</h1>
+
+<p>
+This is <i>gPapers</i>, the open-sourced, <a href="http://www.gnome.org/">Gnome based</a> digital library manager.
+Think of it as an <a href="http://www.apple.com/itunes/">iTunes</a> for your PDFs.
+</p>
+
+<p>
+I've written this mostly because my desk <a href="http://www.phdcomics.com/comics/archive.php?comicid=961">looks like this</a>.
+You read a lot during your PhD, and keeping printouts on your desk in a giant stack just doesn't scale.  Necessity is the mother of invention...
+</p>
+
+<h2>Download / Install</h2>
+<p>
+No nice packages / installer yet, sorry.  You'll need the following libraries:</p>
+<ul>
+<li>Ubuntu: <code>sudo apt-get install python python-glade2 python-gnome2 python-gconf python-sqlite3</code></li>
+<li>Debian: <code>sudo apt-get install python python-glade2 python-gnome2 python-sqlite3</code></li>
+<li>Redhat: <code>sudo yum install pygtk2 gnome-python2-gconf pygtk2-libglade python-sqlite3</code></li>
+</ul>
+<p><i>Note:</i> If your distro doesn't have <code>python-sqlite3</code>, you can use <code>pysqlite2</code>.</p>
+<p>Now run:</p>
+<ol>
+<li><code>svn checkout http://gpapers.googlecode.com/svn/trunk/ gpapers</code></li>
+<li><code>svn co http://code.djangoproject.com/svn/django/trunk/django gpapers/django</code></li>
+<li><code>svn checkout http://deseb.googlecode.com/svn/trunk/src/deseb gpapers/deseb</code></li>
+</ol>
+<p><i>Note:</i> The last two lines aren't necessary if you have recent versions of <a href="http://www.djangoproject.com/">django</a> and <a href="http://code.google.com/p/deseb/">deseb</a> already installed.</p>
+
+<h2>Links</h2>
+<ul>
+<li><a href="http://code.google.com/p/gpapers/">Google Code Project Page</a></li>
+<li><a href="http://groups.google.com/group/gpapers-discuss">Discussion Listserv</a></li>
+<li><a href="http://code.google.com/p/gpapers/issues/entry">Report Bugs Here</a></li>
+</ul>
+
+<p>PS: Thanks to <a href="http://mekentosj.com/papers/">mekentosj</a> for the orignal idea, and recognizing the need.</p>
+
+<center style="font-size:smaller;">Copyright &copy; 2008 <a href="http://kered.org">Derek Anderson</a></center>
+
+</body>
+</html>
