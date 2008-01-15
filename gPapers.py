@@ -48,19 +48,31 @@ try:
 except:
     traceback.print_exc()
     print 'could not import required GTK libraries.  try running:'
-    print '\tfor ubuntu: sudo apt-get install python python-glade2 python-gnome2 python-sqlite3 python-gconf'
-    print '\tfor debian: sudo apt-get install python python-glade2 python-gnome2 python-sqlite3 rsync'
-    print '\tfor redhat: yum install pygtk2 gnome-python2-gconf pygtk2-libglade python-sqlite3'
-    print 'note that if your distro doesn\'t have python-sqlite3 yet, you can instead use pysqlite2'
+    print '\tfor ubuntu: sudo apt-get install python python-glade2 python-gnome2 python-gconf'
+    print '\tfor debian: sudo apt-get install python python-glade2 python-gnome2'
+    print '\tfor redhat: yum install pygtk2 gnome-python2-gconf pygtk2-libglade'
     sys.exit()
 
 # backend imports
 
 try:
+    import sqlite3
+except:
+    try:
+        from pysqlite2 import dbapi2 as sqlite3
+    except:
+        traceback.print_exc()
+        print 'could not import required sqlite3 libraries.  try running:'
+        print '\tfor ubuntu or debian: sudo apt-get install python-sqlite3'
+        print '\tfor redhat: yum install python-sqlite3'
+        print 'note that if your distro doesn\'t have python-sqlite3 yet, you can use pysqlite2'
+        sys.exit()
+
+try:
     from django.template import defaultfilters
 except:
     traceback.print_exc()
-    print 'could not import django.  try running (from "%s"):' % RUN_FROM_DIR
+    print 'could not import django [http://www.djangoproject.com/].  try running (from "%s"):' % RUN_FROM_DIR
     print '\tsvn co http://code.djangoproject.com/svn/django/trunk/django'
     sys.exit()
 
@@ -68,7 +80,7 @@ try:
     import deseb
 except:
     traceback.print_exc()
-    print 'could not import deseb.  try running (from "%s"):' % RUN_FROM_DIR
+    print 'could not import deseb [http://code.google.com/p/deseb/].  try running (from "%s"):' % RUN_FROM_DIR
     print '\tsvn checkout http://deseb.googlecode.com/svn/trunk/src/deseb'
     sys.exit()
 
@@ -1178,7 +1190,14 @@ class MainGUI:
         except:
             traceback.print_exc()
             
-       
+
+def init_db():
+    for app in models.get_apps():
+        app_name = app.__name__.split('.')[-2]
+        if app_name=='gPapers':
+            import deseb.schema_evolution
+            deseb.schema_evolution.evolvedb(app, interactive=False, managed_upgrade_only=True)
+
 
 if __name__ == "__main__":
     if not os.path.isdir( settings.MEDIA_ROOT ):
@@ -1186,6 +1205,7 @@ if __name__ == "__main__":
     if not os.path.isdir( os.path.join( settings.MEDIA_ROOT, 'papers' ) ):
         os.mkdir( os.path.join( settings.MEDIA_ROOT, 'papers' ) )
     global main_gui
+    init_db()
     main_gui = MainGUI()
     gtk.main()
         
