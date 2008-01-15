@@ -70,6 +70,12 @@ except:
 
 try:
     from django.template import defaultfilters
+    print 
+    print 'note: django provides a web-based administrative tool for your database.  to use it, run the following...'
+    print '         ./manage.py syncdb'
+    print '         ./manage.py runserver'
+    print '      and go to http://127.0.0.1:8000/admin/'
+    print
 except:
     traceback.print_exc()
     print 'could not import django [http://www.djangoproject.com/].  try running (from "%s"):' % RUN_FROM_DIR
