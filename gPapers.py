@@ -163,6 +163,7 @@ def import_citations_via_references(references):
     main_gui.refresh_middle_pane_search()
     
 def import_citation(url, refresh_after=True):
+    main_gui.active_thread_ids.add( thread.get_ident() )
     try:
         params = openanything.fetch(url)
         if params['status']!=200 and params['status']!=302 :
@@ -200,6 +201,7 @@ def import_citation(url, refresh_after=True):
     error.set_markup('<b>Unknown Source</b>\n\nThis URL is from an unknown citation source.')
     error.run()
     gtk.gdk.threads_leave()
+    main_gui.active_thread_ids.remove( thread.get_ident() )
     
 def should_we_reimport_paper(paper):
     gtk.gdk.threads_enter()
@@ -467,6 +469,7 @@ def import_ieee_citation(params):
 class MainGUI:
     
     current_middle_top_pane_refresh_thread_ident = None
+    active_thread_ids = set()
     
     def import_url(self, o):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
@@ -507,8 +510,31 @@ class MainGUI:
         self.init_my_library_filter_pane()
         self.init_middle_top_pane()
         self.init_paper_information_pane()
-        self.refresh_left_pane()        
+        self.refresh_left_pane()  
+        self.init_busy_notifier()      
         main_window.show()
+        
+    def init_busy_notifier(self):
+        busy_notifier = self.ui.get_widget('busy_notifier')
+        busy_notifier.set_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'blank.gif' ) )
+        self.busy_notifier_is_running = False
+        thread.start_new_thread( self.watch_busy_notifier, () )
+
+    def watch_busy_notifier(self):
+        while True:
+            try:
+                if len(self.active_thread_ids):
+                    if not self.busy_notifier_is_running:
+                        self.ui.get_widget('busy_notifier').set_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'process-working.gif' ) )
+                        self.busy_notifier_is_running = True
+                else:
+                    if self.busy_notifier_is_running:
+                        self.ui.get_widget('busy_notifier').set_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'blank.gif' ) )
+                        self.busy_notifier_is_running = False
+            except:
+                traceback.print_exc()
+            time.sleep(1)
+        
 
     def init_menu(self):
         self.ui.get_widget('menuitem_quit').connect('activate', gtk.main_quit)
@@ -981,6 +1007,7 @@ class MainGUI:
             gtk.gdk.threads_leave()
 
     def refresh_middle_pane_from_my_library(self, refresh_library_filter_pane=True, playlist_id=-1):
+        self.active_thread_ids.add( thread.get_ident() )
         try:
             rows = []
             search_text = self.ui.get_widget('middle_pane_search').get_text()
@@ -993,7 +1020,6 @@ class MainGUI:
                         paper_ids.add( paper.id )
                     for sponsor in Sponsor.objects.filter( name__icontains=s ):
                         for paper in sponsor.paper_set.all(): paper_ids.add( paper.id )
-                    print list(Author.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) ) )
                     for author in Author.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) ):
                         for paper in author.paper_set.all(): paper_ids.add( paper.id )
                     for source in Source.objects.filter( Q(name__icontains=s) | Q(issue__icontains=s) | Q(location__icontains=s) ):
@@ -1069,6 +1095,7 @@ class MainGUI:
             self.refresh_my_library_count()
         except:
             traceback.print_exc()
+        self.active_thread_ids.remove( thread.get_ident() )
     
     def refresh_my_library_count(self):
         gtk.gdk.threads_enter()
@@ -1079,6 +1106,7 @@ class MainGUI:
     
     def refresh_middle_pane_from_acm(self):
         if not self.ui.get_widget('middle_pane_search').get_text(): return
+        self.active_thread_ids.add( thread.get_ident() )
         rows = []
         try:
             params = openanything.fetch( 'http://portal.acm.org/results.cfm?dl=ACM&query=%s' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
@@ -1130,9 +1158,11 @@ class MainGUI:
                 gtk.gdk.threads_leave()
         except:
             traceback.print_exc()
+        self.active_thread_ids.remove( thread.get_ident() )
             
     def refresh_middle_pane_from_ieee(self):
         if not self.ui.get_widget('middle_pane_search').get_text(): return
+        self.active_thread_ids.add( thread.get_ident() )
         rows = []
         try:
             params = openanything.fetch( 'http://ieeexplore.ieee.org/search/freesearchresult.jsp?history=yes&queryText=%%28%s%%29&imageField.x=0&imageField.y=0' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
@@ -1189,6 +1219,7 @@ class MainGUI:
                 gtk.gdk.threads_leave()
         except:
             traceback.print_exc()
+        self.active_thread_ids.remove( thread.get_ident() )
             
 
 def init_db():
