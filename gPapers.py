@@ -127,6 +127,11 @@ def truncate_long_str(s, max_length=96):
         return s
     else:
         return s[0:max_length] + '...'
+    
+def get_md5_hexdigest_from_data(data):
+    m = md5.new()
+    m.update(data)
+    return m.hexdigest()
 
 def set_model_from_list(cb, items, index=None):
     """Setup a ComboBox or ComboBoxEntry based on a list of strings, or a list of tuples with the index param."""           
@@ -232,15 +237,57 @@ def import_acm_citation(params):
             title.append(node.string)
         try: doi = str(soup.find('form', attrs={'name':'popbinder'}).nextSibling.table.findAll('tr')[-1].findAll('td')[-1].a.string)
         except: doi = ''
-        paper, created = Paper.objects.get_or_create(
-            title = html_strip(''.join(title)),
-            doi = doi,
-        )
-        if created: paper.save()
-        else: 
+
+        full_text_data = None
+        full_text_filename = None
+        for node in soup.findAll('a', attrs={'name':'FullText'}):
+            if node.contents[1]=='Pdf':
+                file_url = ACM_BASE_URL +'/'+ node['href']
+                print thread.get_ident(), 'downloading paper from', file_url
+                params_file = openanything.fetch(file_url)
+                if params_file['status']==200 or params_file['status']==302 :
+                    if params_file['data'].startswith('%PDF'):
+                        #paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.pdf', params_file['data'] )
+                        full_text_filename = defaultfilters.slugify(doi) +'_'+ defaultfilters.slugify(title) +'.pdf'
+                        full_text_data = params_file['data']
+                    else:
+                        print thread.get_ident(), 'this does not appear to be a pdf file...'
+                        ext = params_file['url'][ params_file['url'].rfind('.')+1:]
+                        if not ext or len(ext)>5:
+                            ext = 'unknown'
+                        #paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params_file['data'] )
+                        full_text_filename = defaultfilters.slugify(doi) +'_'+ defaultfilters.slugify(title) +'.'+ defaultfilters.slugify(ext)
+                        full_text_data = params_file['data']
+                    #paper.save()
+                    break
+                else:
+                    print thread.get_ident(), 'error downloading paper:', params_file
+
+        md5_hexdigest = get_md5_hexdigest_from_data( full_text_data )
+        papers = Paper.objects.filter( full_text_md5=md5_hexdigest )
+
+        if len(papers):
             print thread.get_ident(), 'paper already imported'
-            if not should_we_reimport_paper(paper):
+            if not should_we_reimport_paper(papers[0]):
                 return
+            created = False
+            paper = papers[0]
+            paper.title = title
+            paper.doi = doi
+            paper.save()
+        else:
+            paper, created = Paper.objects.get_or_create(
+                title = html_strip(''.join(title)),
+                doi = doi,
+            )
+            if created:
+                if full_text_filename and full_text_data:
+                    paper.save_full_text_file( full_text_filename, full_text_data )
+                paper.save()
+            else: 
+                print thread.get_ident(), 'paper already imported'
+                if not should_we_reimport_paper(paper):
+                    return
 
         try: publisher_name = html_strip( soup.find('div', attrs={'class':'publishers'}).contents[0] )
         except: publisher_name = None
@@ -361,25 +408,6 @@ def import_acm_citation(params):
                     )
                     if created: reference.save()
         
-        
-        for node in soup.findAll('a', attrs={'name':'FullText'}):
-            if node.contents[1]=='Pdf':
-                file_url = ACM_BASE_URL +'/'+ node['href']
-                print thread.get_ident(), 'downloading paper from', file_url
-                params = openanything.fetch(file_url)
-                if params['status']==200 or params['status']==302 :
-                    if params['data'].startswith('%PDF'):
-                        paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.pdf', params['data'] )
-                    else:
-                        print thread.get_ident(), 'this does not appear to be a pdf file...'
-                        ext = params['url'][ params['url'].rfind('.')+1:]
-                        if not ext or len(ext)>5:
-                            ext = 'unknown'
-                        paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params['data'] )
-                    paper.save()
-                    break
-                else:
-                    print thread.get_ident(), 'error downloading paper:', params
         
         paper.save()
         print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.authors.all()
@@ -581,7 +609,8 @@ class MainGUI:
                 selection = self.ui.get_widget('left_pane').get_selection()
                 liststore, rows = selection.get_selected_rows()
                 selection.unselect_all()
-                selection.select_path( (rows[0][0],) )
+                if rows:
+                    selection.select_path( (rows[0][0],) )
             time.sleep(1)
         
     def init_left_pane(self):
@@ -825,8 +854,12 @@ class MainGUI:
         self.paper_information_pane_model.clear()
         self.ui.get_widget('paper_information_pane').columns_autosize()
         paper_notes = self.ui.get_widget('paper_notes')
-        try: paper_notes.get_buffer().disconnect(self.update_paper_notes_handler_id)
-        except: pass
+        try: 
+            if not self.update_paper_notes_handler_id==None:
+                paper_notes.get_buffer().disconnect(self.update_paper_notes_handler_id)
+            self.update_paper_notes_handler_id = None
+        except:
+            self.update_paper_notes_handler_id = None
         paper_notes.get_buffer().set_text('')
         paper_notes.set_property('sensitive', False)
         paper_information_toolbar = self.ui.get_widget('paper_information_toolbar')

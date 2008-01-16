@@ -1,4 +1,4 @@
-import os
+import md5, os
 from django.db import models
 
 
@@ -89,10 +89,17 @@ class Paper(models.Model):
     sponsors = models.ManyToManyField(Sponsor)
     organizations = models.ManyToManyField(Organization)
     full_text = models.FileField(upload_to=os.path.join('papers','%Y','%m'))
+    full_text_md5 = models.CharField(max_length='32', blank=True)
     rating = models.IntegerField(default=0)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     
+    def _save_FIELD_file(self, field, filename, raw_contents, save=True):
+        m = md5.new()
+        m.update(raw_contents)
+        self.full_text_md5 = m.hexdigest()
+        super(Paper, self)._save_FIELD_file(field, filename, raw_contents, save)
+
     class Admin:
         list_display = ( 'id', 'doi', 'title' )
 
