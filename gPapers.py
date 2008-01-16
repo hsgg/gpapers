@@ -580,7 +580,7 @@ class MainGUI:
         gnome.init(PROGRAM, VERSION)
         self.ui = gtk.glade.XML(RUN_FROM_DIR + 'ui.glade')
         main_window = self.ui.get_widget('main_window')
-        main_window.connect("delete-event", gtk.main_quit )
+        main_window.connect("delete-event", lambda x,y: sys.exit(0) )
         self.init_menu()
         self.init_search_box()
         self.init_left_pane()
@@ -614,7 +614,7 @@ class MainGUI:
         
 
     def init_menu(self):
-        self.ui.get_widget('menuitem_quit').connect('activate', gtk.main_quit)
+        self.ui.get_widget('menuitem_quit').connect('activate', lambda x: sys.exit(0))
         self.ui.get_widget('menuitem_import_url').connect('activate', self.import_url)
         self.ui.get_widget('menuitem_import_doi').connect('activate', self.import_doi)
         self.ui.get_widget('menuitem_import_file').connect('activate', self.import_file)
@@ -690,6 +690,7 @@ class MainGUI:
         author_filter.append_column( column )
         self.make_all_columns_resizeable_clickable_ellipsize( author_filter.get_columns() )
         author_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
+        author_filter.connect('row-activated', self.handle_author_filter_row_activated )
 
         organization_filter = self.ui.get_widget('organization_filter')
         # id, org
@@ -878,13 +879,17 @@ class MainGUI:
     def handle_middle_top_pane_row_activated(self, treeview, path, view_column):
         liststore, rows = treeview.get_selection().get_selected_rows()
         paper_id = treeview.get_model().get_value( treeview.get_model().get_iter(path), 0 )
-        print 'paper_id', paper_id
         try:
             paper = Paper.objects.get(id=paper_id)
             if paper.full_text:
                 desktop.open( paper.get_full_text_filename() )
         except:
             traceback.print_exc()
+
+    def handle_author_filter_row_activated(self, treeview, path, view_column):
+        liststore, rows = treeview.get_selection().get_selected_rows()
+        id = treeview.get_model().get_value( treeview.get_model().get_iter(path), 0 )
+        AuthorEditGUI(id)
 
     def make_all_columns_resizeable_clickable_ellipsize(self, columns):
         for column in columns:
@@ -1305,6 +1310,32 @@ class MainGUI:
         except:
             traceback.print_exc()
         self.active_thread_ids.remove( thread.get_ident() )
+
+
+
+class AuthorEditGUI:
+    def __init__(self, author_id):
+        self.author = Author.objects.get(id=author_id)
+        self.ui = gtk.glade.XML(RUN_FROM_DIR + 'author_edit_gui.glade')
+        self.author_edit_dialog = self.ui.get_widget('author_edit_dialog')
+        self.author_edit_dialog.connect("delete-event", self.author_edit_dialog.destroy )
+        self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.author_edit_dialog.destroy() )
+        self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
+        self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
+        self.ui.get_widget('entry_name').set_text( self.author.name )
+        self.author_edit_dialog.show()
+        
+    def delete(self):
+        self.author.delete()
+        self.author_edit_dialog.destroy()
+        main_gui.refresh_middle_pane_search()
+        
+    def save(self):
+        self.author.name = self.ui.get_widget('entry_name').get_text()
+        self.author.save()
+        self.author_edit_dialog.destroy()
+        main_gui.refresh_middle_pane_search()
+        
             
 
 def init_db():
