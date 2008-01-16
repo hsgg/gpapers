@@ -650,7 +650,6 @@ class MainGUI:
         while True:
             if self.last_middle_pane_search_string==None or self.ui.get_widget('middle_pane_search').get_text()!=self.last_middle_pane_search_string:
                 self.last_middle_pane_search_string = self.ui.get_widget('middle_pane_search').get_text()
-                print 'new search string =', self.last_middle_pane_search_string
                 selection = self.ui.get_widget('left_pane').get_selection()
                 liststore, rows = selection.get_selected_rows()
                 selection.unselect_all()
@@ -703,6 +702,7 @@ class MainGUI:
         organization_filter.append_column( column )
         self.make_all_columns_resizeable_clickable_ellipsize( organization_filter.get_columns() )
         organization_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
+        organization_filter.connect('row-activated', self.handle_organization_filter_row_activated )
 
         source_filter = self.ui.get_widget('source_filter')
         # id, name, issue, location, publisher, date
@@ -718,6 +718,7 @@ class MainGUI:
         source_filter.append_column( gtk.TreeViewColumn("Publisher", gtk.CellRendererText(), text=4) )
         self.make_all_columns_resizeable_clickable_ellipsize( source_filter.get_columns() )
         source_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
+        source_filter.connect('row-activated', self.handle_source_filter_row_activated )
 
     def refresh_my_library_filter_pane(self):
 
@@ -890,6 +891,16 @@ class MainGUI:
         liststore, rows = treeview.get_selection().get_selected_rows()
         id = treeview.get_model().get_value( treeview.get_model().get_iter(path), 0 )
         AuthorEditGUI(id)
+
+    def handle_organization_filter_row_activated(self, treeview, path, view_column):
+        liststore, rows = treeview.get_selection().get_selected_rows()
+        id = treeview.get_model().get_value( treeview.get_model().get_iter(path), 0 )
+        OrganizationEditGUI(id)
+
+    def handle_source_filter_row_activated(self, treeview, path, view_column):
+        liststore, rows = treeview.get_selection().get_selected_rows()
+        id = treeview.get_model().get_value( treeview.get_model().get_iter(path), 0 )
+        SourceEditGUI(id)
 
     def make_all_columns_resizeable_clickable_ellipsize(self, columns):
         for column in columns:
@@ -1334,6 +1345,62 @@ class AuthorEditGUI:
         self.author.name = self.ui.get_widget('entry_name').get_text()
         self.author.save()
         self.author_edit_dialog.destroy()
+        main_gui.refresh_middle_pane_search()
+        
+            
+
+class OrganizationEditGUI:
+    def __init__(self, id):
+        self.organization = Organization.objects.get(id=id)
+        self.ui = gtk.glade.XML(RUN_FROM_DIR + 'organization_edit_gui.glade')
+        self.edit_dialog = self.ui.get_widget('organization_edit_dialog')
+        self.edit_dialog.connect("delete-event", self.edit_dialog.destroy )
+        self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.edit_dialog.destroy() )
+        self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
+        self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
+        self.ui.get_widget('entry_name').set_text( self.organization.name )
+        self.ui.get_widget('entry_location').set_text( self.organization.location )
+        self.edit_dialog.show()
+        
+    def delete(self):
+        self.organization.delete()
+        self.edit_dialog.destroy()
+        main_gui.refresh_middle_pane_search()
+        
+    def save(self):
+        self.organization.name = self.ui.get_widget('entry_name').get_text()
+        self.organization.location = self.ui.get_widget('entry_location').get_text()
+        self.organization.save()
+        self.edit_dialog.destroy()
+        main_gui.refresh_middle_pane_search()
+        
+            
+
+class SourceEditGUI:
+    def __init__(self, id):
+        self.source = Source.objects.get(id=id)
+        self.ui = gtk.glade.XML(RUN_FROM_DIR + 'source_edit_gui.glade')
+        self.edit_dialog = self.ui.get_widget('source_edit_dialog')
+        self.edit_dialog.connect("delete-event", self.edit_dialog.destroy )
+        self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.edit_dialog.destroy() )
+        self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
+        self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
+        self.ui.get_widget('entry_name').set_text( self.source.name )
+        self.ui.get_widget('entry_location').set_text( self.source.location )
+        self.ui.get_widget('entry_issue').set_text( self.source.issue )
+        self.edit_dialog.show()
+        
+    def delete(self):
+        self.source.delete()
+        self.edit_dialog.destroy()
+        main_gui.refresh_middle_pane_search()
+        
+    def save(self):
+        self.source.name = self.ui.get_widget('entry_name').get_text()
+        self.source.location = self.ui.get_widget('entry_location').get_text()
+        self.source.issue = self.ui.get_widget('entry_issue').get_text()
+        self.source.save()
+        self.edit_dialog.destroy()
         main_gui.refresh_middle_pane_search()
         
             
