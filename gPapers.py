@@ -154,6 +154,10 @@ def fetch_citations_via_urls(urls):
 def fetch_citations_via_references(references):
     print 'trying to fetch:', references
     t = thread.start_new_thread( import_citations_via_references, (references,) )
+
+def fetch_documents_via_filenames(filenames):
+    print 'trying to fetch:', filenames
+    t = thread.start_new_thread( import_documents_via_filenames, (filenames,) )
     
 def import_citations(urls):
     for url in urls:
@@ -170,6 +174,12 @@ def import_citations_via_references(references):
             if reference.url_from_referenced_paper:
                 reference.referenced_paper = import_citation( reference.url_from_referenced_paper, refresh_after=False )
                 reference.save()
+    main_gui.refresh_middle_pane_search()
+    
+def import_documents_via_filenames(filenames):
+    for filename in filenames:
+        data = open(filename,'r').read()
+        import_document( filename, data )
     main_gui.refresh_middle_pane_search()
     
 def import_citation(url, refresh_after=True):
@@ -491,13 +501,36 @@ def import_ieee_citation(params):
                 else:
                     print thread.get_ident(), 'error downloading paper:', params
         
-        print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.authors.all()
+        print thread.get_ident(), 'imported paper =', paper.id, paper.doi, paper.title, paper.authors.all()
         return paper
     except:
         traceback.print_exc()
         if paper:
             paper.delete()
-    
+
+def import_document( filename, data=None ):
+    paper = None
+    if not data:
+        params = openanything.fetch(filename)
+        data = params['data']
+        if not data:
+            print thread.get_ident(), 'could not get', filename
+    try:
+        print thread.get_ident(), 'importing paper =', filename
+        md5_hexdigest = get_md5_hexdigest_from_data( data )
+        paper, created = Paper.objects.get_or_create( full_text_md5=md5_hexdigest )
+        if created:
+            paper.title = filename
+            paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
+            paper.save()
+            print thread.get_ident(), 'imported paper =', filename
+        else:
+            print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.authors.all()
+    except:
+        traceback.print_exc()
+        if paper:
+            paper.delete()
+
 
 class MainGUI:
     
@@ -530,6 +563,17 @@ class MainGUI:
         response = dialog.run()
         if response == gtk.RESPONSE_OK:
             fetch_citation_via_url( 'http://dx.doi.org/'+ entry.get_text().strip() )
+        dialog.destroy()
+    
+    def import_file(self, o):
+        dialog = gtk.FileChooserDialog(title='Select a PDF to import...', parent=None, action=gtk.FILE_CHOOSER_ACTION_OPEN, buttons=(gtk.STOCK_CANCEL,gtk.RESPONSE_CANCEL,gtk.STOCK_OPEN,gtk.RESPONSE_OK), backend=None)
+        #dialog.connect('response', lambda x,y: dialog.destroy())
+        dialog.set_default_response(gtk.RESPONSE_OK)
+        dialog.set_select_multiple(True)
+        dialog.show_all()
+        response = dialog.run()
+        if response == gtk.RESPONSE_OK:
+            fetch_documents_via_filenames( dialog.get_filenames() )
         dialog.destroy()
     
     def __init__(self):
@@ -573,6 +617,7 @@ class MainGUI:
         self.ui.get_widget('menuitem_quit').connect('activate', gtk.main_quit)
         self.ui.get_widget('menuitem_import_url').connect('activate', self.import_url)
         self.ui.get_widget('menuitem_import_doi').connect('activate', self.import_doi)
+        self.ui.get_widget('menuitem_import_file').connect('activate', self.import_file)
         
     def init_search_box(self):
         thread.start_new_thread( self.watch_middle_pane_search, () )
@@ -610,7 +655,9 @@ class MainGUI:
                 liststore, rows = selection.get_selected_rows()
                 selection.unselect_all()
                 if rows:
+                    gtk.gdk.threads_enter()
                     selection.select_path( (rows[0][0],) )
+                    gtk.gdk.threads_leave()
             time.sleep(1)
         
     def init_left_pane(self):
