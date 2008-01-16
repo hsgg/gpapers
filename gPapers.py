@@ -997,6 +997,11 @@ class MainGUI:
                 paper_notes.set_property('sensitive', True)
                 self.update_paper_notes_handler_id = paper_notes.get_buffer().connect('changed', self.update_paper_notes, paper.id )
 
+                button = gtk.ToolButton(gtk.STOCK_EDIT)
+                button.set_tooltip_markup('Edit this paper...')
+                button.connect( 'clicked', lambda x: PaperEditGUI(paper.id) )
+                paper_information_toolbar.insert( button, -1 )
+
                 button = gtk.ToolButton(gtk.STOCK_REMOVE)
                 button.set_tooltip_markup('Remove this paper from your library...')
                 button.connect( 'clicked', lambda x: self.delete_papers([paper.id]) )
@@ -1400,6 +1405,36 @@ class SourceEditGUI:
         self.source.location = self.ui.get_widget('entry_location').get_text()
         self.source.issue = self.ui.get_widget('entry_issue').get_text()
         self.source.save()
+        self.edit_dialog.destroy()
+        main_gui.refresh_middle_pane_search()
+        
+            
+
+class PaperEditGUI:
+    def __init__(self, id):
+        self.paper = Paper.objects.get(id=id)
+        self.ui = gtk.glade.XML(RUN_FROM_DIR + 'paper_edit_gui.glade')
+        self.edit_dialog = self.ui.get_widget('paper_edit_dialog')
+        self.edit_dialog.connect("delete-event", self.edit_dialog.destroy )
+        self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.edit_dialog.destroy() )
+        self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
+        self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
+        self.ui.get_widget('entry_title').set_text( self.paper.title )
+        self.ui.get_widget('entry_doi').set_text( self.paper.doi )
+        self.ui.get_widget('textview_abstract').get_buffer().set_text( self.paper.abstract )
+        self.edit_dialog.show()
+        
+    def delete(self):
+        self.paper.delete()
+        self.edit_dialog.destroy()
+        main_gui.refresh_middle_pane_search()
+        
+    def save(self):
+        self.paper.title = self.ui.get_widget('entry_title').get_text()
+        self.paper.doi = self.ui.get_widget('entry_doi').get_text()
+        text_buffer = self.ui.get_widget('textview_abstract').get_buffer()
+        self.paper.abstract = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
+        self.paper.save()
         self.edit_dialog.destroy()
         main_gui.refresh_middle_pane_search()
         
