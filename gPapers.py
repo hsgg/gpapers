@@ -272,9 +272,12 @@ def import_acm_citation(params):
                     break
                 else:
                     print thread.get_ident(), 'error downloading paper:', params_file
-
-        md5_hexdigest = get_md5_hexdigest_from_data( full_text_data )
-        papers = Paper.objects.filter( full_text_md5=md5_hexdigest )
+        
+        if full_text_data:
+            md5_hexdigest = get_md5_hexdigest_from_data( full_text_data )
+            papers = Paper.objects.filter( full_text_md5=md5_hexdigest )
+        else:
+            papers = []
 
         if len(papers):
             print thread.get_ident(), 'paper already imported'
@@ -640,7 +643,17 @@ class MainGUI:
         )
         if created: playlist.save()
         self.refresh_left_pane()
-        
+
+    def create_playlist(self, ids=None):
+        playlist = Playlist.objects.create(
+            title = '<i>(new collection)</i>',
+            parent = '0'
+        )
+        if ids:
+            for paper in Paper.objects.in_bulk(ids).values():
+                playlist.papers.add(paper)
+        playlist.save()
+        self.refresh_left_pane()
 
     def refresh_middle_pane_search(self):
         self.last_middle_pane_search_string = None
@@ -661,8 +674,8 @@ class MainGUI:
         
     def init_left_pane(self):
         left_pane = self.ui.get_widget('left_pane')
-        # name, icon, playlist_id
-        self.left_pane_model = gtk.TreeStore( str, gtk.gdk.Pixbuf, int )
+        # name, icon, playlist_id, editable
+        self.left_pane_model = gtk.TreeStore( str, gtk.gdk.Pixbuf, int, bool )
         left_pane.set_model( self.left_pane_model )
         
         column = gtk.TreeViewColumn()
@@ -671,10 +684,13 @@ class MainGUI:
         column.pack_start(renderer, expand=False)
         column.add_attribute(renderer, 'pixbuf', 1)
         renderer = gtk.CellRendererText()
+        renderer.connect('edited', self.handle_playlist_edited)
         column.pack_start(renderer, expand=True)
         column.add_attribute(renderer, 'markup', 0)
+        column.add_attribute(renderer, 'editable', 3)
         
         left_pane.get_selection().connect('changed', self.select_left_pane_item)
+        left_pane.connect('button-press-event', self.handle_left_pane_button_press_event)
         
     def init_my_library_filter_pane(self):
         
@@ -767,27 +783,27 @@ class MainGUI:
     def refresh_left_pane(self):
         left_pane = self.ui.get_widget('left_pane')
         self.left_pane_model.clear()
-        self.left_pane_model.append( None, ( '<b>My Library</b>', left_pane.render_icon(gtk.STOCK_HOME, gtk.ICON_SIZE_MENU), -1 ) )
+        self.left_pane_model.append( None, ( '<b>My Library</b>', left_pane.render_icon(gtk.STOCK_HOME, gtk.ICON_SIZE_MENU), -1, False ) )
         for playlist in Playlist.objects.filter(parent='0'):
             if playlist.search_text:
                 icon = left_pane.render_icon(gtk.STOCK_FIND, gtk.ICON_SIZE_MENU)
             else:
                 icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
-            self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( playlist.title, icon, playlist.id ) )
-        self.left_pane_model.append( None, ( 'ACM', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_acm.ico' ) ), -1 ) )
+            self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( playlist.title, icon, playlist.id, True ) )
+        self.left_pane_model.append( None, ( 'ACM', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_acm.ico' ) ), -1, False ) )
         for playlist in Playlist.objects.filter(parent='1'):
             if playlist.search_text:
                 icon = left_pane.render_icon(gtk.STOCK_FIND, gtk.ICON_SIZE_MENU)
             else:
                 icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
-            self.left_pane_model.append( self.left_pane_model.get_iter((1),), ( playlist.title, icon, playlist.id ) )
-        self.left_pane_model.append( None, ( 'IEEE', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_ieee.ico' ) ), -1  ) )
+            self.left_pane_model.append( self.left_pane_model.get_iter((1),), ( playlist.title, icon, playlist.id, True ) )
+        self.left_pane_model.append( None, ( 'IEEE', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_ieee.ico' ) ), -1, False  ) )
         for playlist in Playlist.objects.filter(parent='2'):
             if playlist.search_text:
                 icon = left_pane.render_icon(gtk.STOCK_FIND, gtk.ICON_SIZE_MENU)
             else:
                 icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
-            self.left_pane_model.append( self.left_pane_model.get_iter((2),), ( playlist.title, icon, playlist.id ) )
+            self.left_pane_model.append( self.left_pane_model.get_iter((2),), ( playlist.title, icon, playlist.id, True ) )
         #self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) )  ) )
         left_pane.expand_all()
 
@@ -801,16 +817,16 @@ class MainGUI:
         self.ui.get_widget('middle_pane_label').set_markup( liststore[rows[0]][0] )
         self.middle_top_pane_model.clear()
 
-        #button = gtk.ToolButton(gtk.STOCK_ADD)
-        #button.set_tooltip_markup('Create a new playlist...')
-        #button.connect( 'clicked', lambda x: True )
-        #button.show()
-        #left_pane_toolbar.insert( button, -1 )
+        button = gtk.ToolButton(gtk.STOCK_ADD)
+        button.set_tooltip_markup('Create a new document collection...')
+        button.connect( 'clicked', lambda x: self.create_playlist() )
+        button.show()
+        left_pane_toolbar.insert( button, -1 )
 
         try:
             playlist = Playlist.objects.get(id=liststore[rows[0]][2])
             button = gtk.ToolButton(gtk.STOCK_REMOVE)
-            button.set_tooltip_markup('Delete this playlist...')
+            button.set_tooltip_markup('Delete this collection...')
             button.connect( 'clicked', lambda x: self.delete_playlist(playlist.id) )
             button.show()
             left_pane_toolbar.insert( button, -1 )
@@ -901,6 +917,33 @@ class MainGUI:
         liststore, rows = treeview.get_selection().get_selected_rows()
         id = treeview.get_model().get_value( treeview.get_model().get_iter(path), 0 )
         SourceEditGUI(id)
+        
+    def handle_left_pane_button_press_event(self, treeview, event):
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                print 'path, col, cellx, celly', path, col, cellx, celly
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                if len(path)==2 and False:
+                    menu = gtk.Menu()
+                    delete = gtk.ImageMenuItem(stock_id=gtk.STOCK_DELETE)
+                    #delete.connect( 'activate', self.delete_element, pthinfo[0][0], self.included_dirs, self.refresh_included_dirs_list )
+                    menu.append(delete)
+                    menu.show_all()
+                    menu.popup(None, None, None, event.button, event.get_time())
+            return True
+        
+    def handle_playlist_edited(self, renderer, path, new_text):
+        playlist_id = self.left_pane_model.get_value( self.left_pane_model.get_iter_from_string(path), 2)
+        playlist = Playlist.objects.get(id=playlist_id)
+        playlist.title = new_text
+        playlist.save()
+        self.refresh_left_pane()
 
     def make_all_columns_resizeable_clickable_ellipsize(self, columns):
         for column in columns:
@@ -1093,7 +1136,7 @@ class MainGUI:
             
     def delete_playlist(self, id):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
-        dialog.set_markup('Really delete this playlist?')
+        dialog.set_markup('Really delete this document collection?')
         dialog.set_default_response(gtk.RESPONSE_NO)
         dialog.show_all()
         response = dialog.run()
