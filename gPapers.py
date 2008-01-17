@@ -52,7 +52,7 @@ except:
     print '\tfor redhat: yum install pygtk2 gnome-python2-gconf pygtk2-libglade'
     sys.exit()
 
-# backend imports
+LEFT_PANE_ADD_TO_PLAYLIST_DND_ACTION = ('add_to_playlist', gtk.TARGET_SAME_APP, 0)
 
 try:
     import sqlite3
@@ -692,6 +692,10 @@ class MainGUI:
         left_pane.get_selection().connect('changed', self.select_left_pane_item)
         left_pane.connect('button-press-event', self.handle_left_pane_button_press_event)
         
+        left_pane.enable_model_drag_dest( [LEFT_PANE_ADD_TO_PLAYLIST_DND_ACTION], gtk.gdk.ACTION_COPY )
+        left_pane.connect('drag-data-received', self.handle_left_pane_drag_data_received_event)
+        left_pane.connect("drag-motion", self.handle_left_pane_drag_motion_event)
+        
     def init_my_library_filter_pane(self):
         
         author_filter = self.ui.get_widget('author_filter')
@@ -824,19 +828,25 @@ class MainGUI:
         left_pane_toolbar.insert( button, -1 )
 
         try:
-            playlist = Playlist.objects.get(id=liststore[rows[0]][2])
+            self.current_playlist = Playlist.objects.get(id=liststore[rows[0]][2])
             button = gtk.ToolButton(gtk.STOCK_REMOVE)
             button.set_tooltip_markup('Delete this collection...')
             button.connect( 'clicked', lambda x: self.delete_playlist(playlist.id) )
             button.show()
             left_pane_toolbar.insert( button, -1 )
-        except: playlist = None
+        except: self.current_playlist = None
         
-        if playlist and playlist.search_text:
-            self.last_middle_pane_search_string = playlist.search_text
-            self.ui.get_widget('middle_pane_search').set_text( playlist.search_text )
+        if self.current_playlist:
+            if self.current_playlist.search_text:
+                self.last_middle_pane_search_string = self.current_playlist.search_text
+                self.ui.get_widget('middle_pane_search').set_text( self.current_playlist.search_text )
+            else:
+                self.last_middle_pane_search_string = ''
+                self.ui.get_widget('middle_pane_search').set_text('')
+#            if len(self.current_playlist.papers.count()):
+                
         if rows[0][0]==0:
-            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, (True, liststore[rows[0]][2]) )
+            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, (True,) )
         else:
             self.ui.get_widget('my_library_filter_pane').hide()
         if rows[0][0]==1:
@@ -892,6 +902,9 @@ class MainGUI:
         
         middle_top_pane.connect('row-activated', self.handle_middle_top_pane_row_activated )
         middle_top_pane.get_selection().connect('changed', self.select_middle_top_pane_item)
+        
+        middle_top_pane.enable_model_drag_source( gtk.gdk.BUTTON1_MASK, [LEFT_PANE_ADD_TO_PLAYLIST_DND_ACTION], gtk.gdk.ACTION_COPY )
+        middle_top_pane.connect('drag-data-get', self.handle_middle_top_pane_drag_data_get)
     
     def handle_middle_top_pane_row_activated(self, treeview, path, view_column):
         liststore, rows = treeview.get_selection().get_selected_rows()
@@ -902,6 +915,11 @@ class MainGUI:
                 desktop.open( paper.get_full_text_filename() )
         except:
             traceback.print_exc()
+    
+    def handle_middle_top_pane_drag_data_get(self, treeview, context, selection, info, timestamp):
+        liststore, rows = treeview.get_selection().get_selected_rows()
+        id = liststore[rows[0]][0]
+        selection.set('text/plain', len(str(id)), str(id))
 
     def handle_author_filter_row_activated(self, treeview, path, view_column):
         liststore, rows = treeview.get_selection().get_selected_rows()
@@ -937,6 +955,34 @@ class MainGUI:
                     menu.show_all()
                     menu.popup(None, None, None, event.button, event.get_time())
             return True
+        
+    def handle_left_pane_drag_data_received_event(self, treeview, context, x, y, selection, info, timestamp):
+        try:
+            drop_info = treeview.get_dest_row_at_pos(x, y)
+            if drop_info:
+                model = treeview.get_model()
+                path, position = drop_info
+                data = selection.data
+                playlist = Playlist.objects.get(id=model.get_value( model.get_iter(path), 2 ))
+                playlist.papers.add( Paper.objects.get(id=int(data)) )
+                playlist.save()
+            return
+        except:
+            traceback.print_exc()
+        
+    def handle_left_pane_drag_motion_event(self, treeview, drag_context, x, y, eventtime):
+        try:
+            target_path, drop_position = treeview.get_dest_row_at_pos(x, y)
+            model, source = treeview.get_selection().get_selected()
+            target = model.get_iter(target_path)
+            if len(target_path)>1 and target_path[0]==0:
+                treeview.enable_model_drag_dest([LEFT_PANE_ADD_TO_PLAYLIST_DND_ACTION], gtk.gdk.ACTION_MOVE)
+            else:
+                treeview.enable_model_drag_dest([], gtk.gdk.ACTION_MOVE)
+        except:
+            # this will occur when we're not over a target
+            # traceback.print_exc()
+            treeview.enable_model_drag_dest([], gtk.gdk.ACTION_MOVE)
         
     def handle_playlist_edited(self, renderer, path, new_text):
         playlist_id = self.left_pane_model.get_value( self.left_pane_model.get_iter_from_string(path), 2)
@@ -1045,10 +1091,11 @@ class MainGUI:
                 button.connect( 'clicked', lambda x: PaperEditGUI(paper.id) )
                 paper_information_toolbar.insert( button, -1 )
 
-                button = gtk.ToolButton(gtk.STOCK_REMOVE)
-                button.set_tooltip_markup('Remove this paper from your library...')
-                button.connect( 'clicked', lambda x: self.delete_papers([paper.id]) )
-                paper_information_toolbar.insert( button, -1 )
+                if self.current_playlist:
+                    button = gtk.ToolButton(gtk.STOCK_REMOVE)
+                    button.set_tooltip_markup('Remove this paper from this collection...')
+                    button.connect( 'clicked', lambda x: self.remove_papers_from_current_playlist([paper.id]) )
+                    paper_information_toolbar.insert( button, -1 )
 
                 if importable_references or importable_citations:
                     import_button = gtk.MenuToolButton(gtk.STOCK_ADD)
@@ -1119,8 +1166,8 @@ class MainGUI:
         paper.notes = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
         paper.save()
         
-    def delete_papers(self, ids):
-        papers = Paper.objects.in_bulk(ids).values()
+    def delete_papers(self, paper_ids):
+        papers = Paper.objects.in_bulk(paper_ids).values()
         paper_list_text = '\n'.join([ ('<i>"%s"</i>' % str(paper.title)) for paper in papers ])
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
         dialog.set_markup('Really delete the following %s?\n\n%s\n\n' % ( humanize_count( len(papers), 'paper', 'papers', places=-1 ), paper_list_text ))
@@ -1133,6 +1180,16 @@ class MainGUI:
                 print 'deleting paper:', paper.doi, paper.title, paper.authors.all()
                 paper.delete()
             self.refresh_middle_pane_search()
+            
+    def remove_papers_from_current_playlist(self, paper_ids):
+        if not self.current_playlist: return
+        try:
+            for paper in Paper.objects.in_bulk(paper_ids).values():
+                self.current_playlist.papers.remove(paper)
+            self.current_playlist.save()
+            thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) )
+        except:
+            traceback.print_exc()
             
     def delete_playlist(self, id):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
@@ -1155,62 +1212,69 @@ class MainGUI:
             middle_top_pane.columns_autosize()
             gtk.gdk.threads_leave()
 
-    def refresh_middle_pane_from_my_library(self, refresh_library_filter_pane=True, playlist_id=-1):
+    def refresh_middle_pane_from_my_library(self, refresh_library_filter_pane=True):
         self.active_thread_ids.add( thread.get_ident() )
         try:
             rows = []
-            search_text = self.ui.get_widget('middle_pane_search').get_text()
             my_library_filter_pane = self.ui.get_widget('my_library_filter_pane')
-            if search_text:
-                my_library_filter_pane.hide()
-                paper_ids = set()
-                for s in search_text.split():
-                    for paper in Paper.objects.filter( Q(title__icontains=s) | Q(doi__icontains=s) | Q(source_session__icontains=s) | Q(abstract__icontains=s) ):
-                        paper_ids.add( paper.id )
-                    for sponsor in Sponsor.objects.filter( name__icontains=s ):
-                        for paper in sponsor.paper_set.all(): paper_ids.add( paper.id )
-                    for author in Author.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) ):
-                        for paper in author.paper_set.all(): paper_ids.add( paper.id )
-                    for source in Source.objects.filter( Q(name__icontains=s) | Q(issue__icontains=s) | Q(location__icontains=s) ):
-                        for paper in source.paper_set.all(): paper_ids.add( paper.id )
-                    for organization in Organization.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) ):
-                        for paper in organization.paper_set.all(): paper_ids.add( paper.id )
-                    for publisher in Publisher.objects.filter( name__icontains=s ):
-                        for source in publisher.source_set.all():
+            
+            if not self.current_playlist:
+                
+                search_text = self.ui.get_widget('middle_pane_search').get_text()
+                if search_text:
+                    my_library_filter_pane.hide()
+                    paper_ids = set()
+                    for s in search_text.split():
+                        for paper in Paper.objects.filter( Q(title__icontains=s) | Q(doi__icontains=s) | Q(source_session__icontains=s) | Q(abstract__icontains=s) ):
+                            paper_ids.add( paper.id )
+                        for sponsor in Sponsor.objects.filter( name__icontains=s ):
+                            for paper in sponsor.paper_set.all(): paper_ids.add( paper.id )
+                        for author in Author.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) ):
+                            for paper in author.paper_set.all(): paper_ids.add( paper.id )
+                        for source in Source.objects.filter( Q(name__icontains=s) | Q(issue__icontains=s) | Q(location__icontains=s) ):
                             for paper in source.paper_set.all(): paper_ids.add( paper.id )
-                    for reference in Reference.objects.filter( Q(line_from_referencing_paper__icontains=s) | Q(doi_from_referencing_paper__icontains=s) ):
-                        paper_ids.add( reference.referencing_paper.id )
-                    for reference in Reference.objects.filter( Q(line_from_referenced_paper__icontains=s) | Q(doi_from_referenced_paper__icontains=s) ):
-                        paper_ids.add( reference.referenced_paper.id )
-                papers = Paper.objects.in_bulk( list(paper_ids) ).values()
+                        for organization in Organization.objects.filter( Q(name__icontains=s) | Q(location__icontains=s) ):
+                            for paper in organization.paper_set.all(): paper_ids.add( paper.id )
+                        for publisher in Publisher.objects.filter( name__icontains=s ):
+                            for source in publisher.source_set.all():
+                                for paper in source.paper_set.all(): paper_ids.add( paper.id )
+                        for reference in Reference.objects.filter( Q(line_from_referencing_paper__icontains=s) | Q(doi_from_referencing_paper__icontains=s) ):
+                            paper_ids.add( reference.referencing_paper.id )
+                        for reference in Reference.objects.filter( Q(line_from_referenced_paper__icontains=s) | Q(doi_from_referenced_paper__icontains=s) ):
+                            paper_ids.add( reference.referenced_paper.id )
+                    papers = Paper.objects.in_bulk( list(paper_ids) ).values()
+                else:
+                    if refresh_library_filter_pane:
+                        self.refresh_my_library_filter_pane()
+                        my_library_filter_pane.show()
+                    paper_query = Paper.objects.all()
+    
+                    filter_liststore, filter_rows = self.ui.get_widget('author_filter').get_selection().get_selected_rows()
+                    q = None
+                    for filter_row in filter_rows:
+                        if q==None: q = Q(authors__id=filter_liststore[filter_row][0])
+                        else: q = q | Q(authors__id=filter_liststore[filter_row][0])
+                    if q: paper_query = paper_query.filter(q)
+                    
+                    filter_liststore, filter_rows = self.ui.get_widget('source_filter').get_selection().get_selected_rows()
+                    q = None
+                    for filter_row in filter_rows:
+                        if q==None: q = Q(source__id=filter_liststore[filter_row][0])
+                        else: q = q | Q(source__id=filter_liststore[filter_row][0])
+                    if q: paper_query = paper_query.filter(q)
+                    
+                    filter_liststore, filter_rows = self.ui.get_widget('organization_filter').get_selection().get_selected_rows()
+                    q = None
+                    for filter_row in filter_rows:
+                        if q==None: q = Q(organizations__id=filter_liststore[filter_row][0])
+                        else: q = q | Q(organizations__id=filter_liststore[filter_row][0])
+                    if q: paper_query = paper_query.filter(q)
+                    
+                    papers = paper_query.distinct()
+                    
             else:
-                if refresh_library_filter_pane:
-                    self.refresh_my_library_filter_pane()
-                    my_library_filter_pane.show()
-                paper_query = Paper.objects.all()
-
-                filter_liststore, filter_rows = self.ui.get_widget('author_filter').get_selection().get_selected_rows()
-                q = None
-                for filter_row in filter_rows:
-                    if q==None: q = Q(authors__id=filter_liststore[filter_row][0])
-                    else: q = q | Q(authors__id=filter_liststore[filter_row][0])
-                if q: paper_query = paper_query.filter(q)
-                
-                filter_liststore, filter_rows = self.ui.get_widget('source_filter').get_selection().get_selected_rows()
-                q = None
-                for filter_row in filter_rows:
-                    if q==None: q = Q(source__id=filter_liststore[filter_row][0])
-                    else: q = q | Q(source__id=filter_liststore[filter_row][0])
-                if q: paper_query = paper_query.filter(q)
-                
-                filter_liststore, filter_rows = self.ui.get_widget('organization_filter').get_selection().get_selected_rows()
-                q = None
-                for filter_row in filter_rows:
-                    if q==None: q = Q(organizations__id=filter_liststore[filter_row][0])
-                    else: q = q | Q(organizations__id=filter_liststore[filter_row][0])
-                if q: paper_query = paper_query.filter(q)
-                
-                papers = paper_query.distinct()
+                my_library_filter_pane.hide()
+                papers = self.current_playlist.papers.all()
                     
             for paper in papers:
                 authors = []
