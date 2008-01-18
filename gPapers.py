@@ -30,10 +30,12 @@ GPL = open( RUN_FROM_DIR + 'GPL.txt', 'r' ).read()
 
 ACM_BASE_URL = 'http://portal.acm.org'
 IEEE_BASE_URL = 'http://ieeexplore.ieee.org'
+ACM_USERNAME = None
+ACM_PASSWORD = None
 
 # GUI imports
 try:
-    import gconf
+    #import gconf
     import pygtk
     pygtk.require("2.0")
     import gobject
@@ -256,10 +258,58 @@ def import_acm_citation(params):
                 print thread.get_ident(), 'downloading paper from', file_url
                 params_file = openanything.fetch(file_url)
                 if params_file['status']==200 or params_file['status']==302 :
+                    try:
+                        ext = params_file['url']
+                        if ext.find('?')>-1:
+                            ext = file_url[0:ext.find('?')]
+                        ext = ext[ ext.rfind('.')+1: ]
+                    except:
+                        ext = 'unknown'
+                    
                     if params_file['data'].startswith('%PDF'):
                         #paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.pdf', params_file['data'] )
-                        full_text_filename = defaultfilters.slugify(doi) +'_'+ defaultfilters.slugify(title) +'.pdf'
+                        full_text_filename = defaultfilters.slugify(doi) +'_'+ defaultfilters.slugify(title) +'.'+ defaultfilters.slugify(ext)
                         full_text_data = params_file['data']
+                    elif params_file['data'].find('<!DOCTYPE')>-1 and params_file['data'].find('logfrm')>-1:
+                        # it appears we have an ACM login page...
+
+                        global ACM_USERNAME
+                        global ACM_PASSWORD
+                        if not ACM_USERNAME:
+                            dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
+                            #dialog.connect('response', lambda x,y: dialog.destroy())
+                            dialog.set_markup('<b>ACM Login</b>\n\nEnter your ACM username and password:')
+                            entry_username = gtk.Entry()
+                            entry_password = gtk.Entry()
+                            entry_password.set_activates_default(True)
+                            dialog.vbox.pack_start(entry_username)
+                            dialog.vbox.pack_start(entry_password)
+                            dialog.set_default_response(gtk.RESPONSE_OK)
+                            gtk.gdk.threads_enter()
+                            dialog.show_all()
+                            response = dialog.run()
+                            if response == gtk.RESPONSE_OK:
+                                ACM_USERNAME = entry_username.get_text()
+                                ACM_PASSWORD = entry_password.get_text()
+                            gtk.gdk.threads_leave()
+                            dialog.destroy()
+                            
+                        post_data = {'username':ACM_USERNAME, 'password':ACM_PASSWORD, 'submit':'Login'}
+                        params_login = openanything.fetch('https://portal.acm.org/poplogin.cfm?is=0&amp;dl=ACM&amp;coll=ACM&amp;comp_id=1220288&amp;want_href=delivery%2Ecfm%3Fid%3D1220288%26type%3Dpdf%26CFID%3D50512225%26CFTOKEN%3D24664038&amp;CFID=50512225&amp;CFTOKEN=24664038&amp;td=1200684914991', post_data=post_data, )
+                        print "params_login['url']", params_login['url']
+                        cfid = re.search( 'CFID=([0-9]*)', params_login['data'] ).group(1)
+                        cftoken = re.search( 'CFTOKEN=([0-9]*)', params_login['data'] ).group(1)
+                        new_file_url = file_url[0:file_url.find('&CFID=')] + '&CFID=%s&CFTOKEN=%s' % (cfid,cftoken)
+                        print 'new_file_url', new_file_url
+                        params_file = openanything.fetch(new_file_url)
+                        if params_file['status']==200 or params_file['status']==302 :
+                            if params_file['data'].startswith('%PDF'):
+                                full_text_filename = defaultfilters.slugify(doi) +'_'+ defaultfilters.slugify(title) +'.'+ defaultfilters.slugify(ext)
+                                full_text_data = params_file['data']
+                            else:
+                                print thread.get_ident(), 'error downloading paper - still not a pdf after login:', params_file
+                        else:
+                            print thread.get_ident(), 'error downloading paper - after login:', params_file
                     else:
                         print thread.get_ident(), 'this does not appear to be a pdf file...'
                         ext = params_file['url'][ params_file['url'].rfind('.')+1:]
@@ -621,6 +671,7 @@ class MainGUI:
         self.ui.get_widget('menuitem_import_url').connect('activate', self.import_url)
         self.ui.get_widget('menuitem_import_doi').connect('activate', self.import_doi)
         self.ui.get_widget('menuitem_import_file').connect('activate', self.import_file)
+        self.ui.get_widget('menuitem_preferences').connect('activate', lambda x: PreferencesGUI())
         
     def init_search_box(self):
         thread.start_new_thread( self.watch_middle_pane_search, () )
@@ -1546,6 +1597,26 @@ class PaperEditGUI:
         self.edit_dialog.destroy()
         main_gui.refresh_middle_pane_search()
         
+        
+class PreferencesGUI:
+    def __init__(self):
+        self.ui = gtk.glade.XML(RUN_FROM_DIR + 'preferences_gui.glade')
+        self.edit_dialog = self.ui.get_widget('preferences_dialog')
+        self.edit_dialog.connect("delete-event", self.edit_dialog.destroy )
+        self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.edit_dialog.destroy() )
+        self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
+        self.edit_dialog.show()
+        
+    def save(self):
+        self.paper.title = self.ui.get_widget('entry_title').get_text()
+        self.paper.doi = self.ui.get_widget('entry_doi').get_text()
+        text_buffer = self.ui.get_widget('textview_abstract').get_buffer()
+        self.paper.abstract = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
+        self.paper.save()
+        self.edit_dialog.destroy()
+        main_gui.refresh_middle_pane_search()
+    
+
             
 
 def init_db():
