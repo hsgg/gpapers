@@ -28,6 +28,7 @@ PROGRAM = 'gPapers'
 VERSION = 'v0.0.0'
 GPL = open( RUN_FROM_DIR + 'GPL.txt', 'r' ).read()
 
+DATE_FORMAT = '%Y-%m-%d'
 ACM_BASE_URL = 'http://portal.acm.org'
 IEEE_BASE_URL = 'http://ieeexplore.ieee.org'
 ACM_USERNAME = None
@@ -911,8 +912,8 @@ class MainGUI:
 
     def init_middle_top_pane(self):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
-        # id, authors, title, journal, year, rating, abstract, icon, import_url, doi
-        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, gtk.gdk.Pixbuf, str, str )
+        # id, authors, title, journal, year, rating, abstract, icon, import_url, doi, created, updated
+        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, gtk.gdk.Pixbuf, str, str, str, str )
         middle_top_pane.set_model( self.middle_top_pane_model )
         middle_top_pane.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         
@@ -947,6 +948,10 @@ class MainGUI:
         middle_top_pane.append_column( column )
         column = gtk.TreeViewColumn("Rating", gtk.CellRendererText(), markup=5)
         column.set_min_width(64)
+        column.set_expand(False)
+        middle_top_pane.append_column( column )
+        column = gtk.TreeViewColumn("Imported", gtk.CellRendererText(), markup=10)
+        column.set_min_width(80)
         column.set_expand(False)
         middle_top_pane.append_column( column )
         
@@ -1354,7 +1359,9 @@ class MainGUI:
                     paper.abstract, 
                     icon, # icon
                     None, # import_url
-                    paper.doi # doi
+                    paper.doi, # doi
+                    paper.created.strftime(DATE_FORMAT), # created
+                    paper.updated.strftime(DATE_FORMAT), # updated
                 ) )
             self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
             self.refresh_my_library_count()
@@ -1410,6 +1417,8 @@ class MainGUI:
                         icon, # icon
                         ACM_BASE_URL +'/'+ node.find('a')['href'], # import_url
                         '', # doi
+                        '', # created
+                        '', # updated
                     )
                     #print thread.get_ident(), 'row =', row
                     rows.append( row )
@@ -1467,6 +1476,8 @@ class MainGUI:
                             icon, # icon
                             IEEE_BASE_URL + node.findAll('a', attrs={'class':'bodyCopySpaced'})[0]['href'], # import_url
                             '', # doi
+                            '', # created
+                            '', # updated
                         )
                         #print thread.get_ident(), 'row =', row
                         rows.append( row )
