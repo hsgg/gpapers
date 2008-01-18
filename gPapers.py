@@ -810,6 +810,7 @@ class MainGUI:
             self.left_pane_model.append( self.left_pane_model.get_iter((2),), ( playlist.title, icon, playlist.id, True ) )
         #self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) )  ) )
         left_pane.expand_all()
+        self.ui.get_widget('left_pane').get_selection().select_path((0,))
 
     def select_left_pane_item(self, selection):
         liststore, rows = selection.get_selected_rows()
@@ -831,7 +832,7 @@ class MainGUI:
             self.current_playlist = Playlist.objects.get(id=liststore[rows[0]][2])
             button = gtk.ToolButton(gtk.STOCK_REMOVE)
             button.set_tooltip_markup('Delete this collection...')
-            button.connect( 'clicked', lambda x: self.delete_playlist(playlist.id) )
+            button.connect( 'clicked', lambda x: self.delete_playlist(self.current_playlist.id) )
             button.show()
             left_pane_toolbar.insert( button, -1 )
         except: self.current_playlist = None
