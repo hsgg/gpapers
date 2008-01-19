@@ -846,9 +846,9 @@ class MainGUI:
             else:
                 icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
             self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( playlist.title, icon, playlist.id, True ) )
-        self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>recently added</i>', left_pane.render_icon(gtk.STOCK_NEW, gtk.ICON_SIZE_MENU), -2, True ) )
-        self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>most often read</i>', left_pane.render_icon(gtk.STOCK_DIALOG_INFO, gtk.ICON_SIZE_MENU), -3, True ) )
-        self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>highest rated</i>', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'emblem-favorite.png' ) ), -4, True ) )
+        self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>recently added</i>', left_pane.render_icon(gtk.STOCK_NEW, gtk.ICON_SIZE_MENU), -2, False ) )
+        self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>most often read</i>', left_pane.render_icon(gtk.STOCK_DIALOG_INFO, gtk.ICON_SIZE_MENU), -3, False ) )
+        self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>highest rated</i>', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'emblem-favorite.png' ) ), -4, False ) )
         self.left_pane_model.append( None, ( 'ACM', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_acm.ico' ) ), -1, False ) )
         for playlist in Playlist.objects.filter(parent='1'):
             if playlist.search_text:
@@ -909,6 +909,10 @@ class MainGUI:
                 self.last_middle_pane_search_string = ''
                 self.ui.get_widget('middle_pane_search').set_text('')
 #            if len(self.current_playlist.papers.count()):
+        
+        if self.current_papers!=None:
+            self.last_middle_pane_search_string = ''
+            self.ui.get_widget('middle_pane_search').set_text('')
                 
         if rows[0][0]==0:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_my_library, (True,) )
