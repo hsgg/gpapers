@@ -26,4 +26,13 @@ sqlite3_evolutions = [
         "INSERT INTO \"gPapers_paper\" SELECT \"id\",\"title\",\"doi\",\"source_id\",\"source_session\",\"source_pages\",\"abstract\",\"notes\",\"full_text\",\"full_text_md5\",\"rating\",\"created\",\"updated\" FROM \"gPapers_paper_1337_TMP\";",
         "DROP TABLE \"gPapers_paper_1337_TMP\";",
     ],
+    [('fv1:-601791475','fv1:973383202'), # generated 2008-01-18 17:07:22.335450
+        "ALTER TABLE \"gPapers_paper\" ADD COLUMN \"read_count\" integer NULL;",
+        "UPDATE \"gPapers_paper\" SET \"read_count\" = 0 WHERE \"read_count\" IS NULL ;",
+        "-- FYI: sqlite does not support changing columns, so we create a new \"gPapers_paper\" and delete the old (ie, this could take a while if you have a lot of data)",
+        "ALTER TABLE \"gPapers_paper\" RENAME TO \"gPapers_paper_1337_TMP\";",
+        "CREATE TABLE \"gPapers_paper\" (\n    \"id\" integer NOT NULL PRIMARY KEY,\n    \"title\" varchar(1024) NOT NULL,\n    \"doi\" varchar(1024) NOT NULL,\n    \"source_id\" integer NULL REFERENCES \"gPapers_source\" (\"id\"),\n    \"source_session\" varchar(1024) NOT NULL,\n    \"source_pages\" varchar(1024) NOT NULL,\n    \"abstract\" text NOT NULL,\n    \"notes\" text NOT NULL,\n    \"full_text\" varchar(100) NOT NULL,\n    \"full_text_md5\" varchar(32) NOT NULL,\n    \"rating\" integer NOT NULL,\n    \"read_count\" integer NOT NULL,\n    \"created\" datetime NOT NULL,\n    \"updated\" datetime NOT NULL\n)\n;",
+        "INSERT INTO \"gPapers_paper\" SELECT \"id\",\"title\",\"doi\",\"source_id\",\"source_session\",\"source_pages\",\"abstract\",\"notes\",\"full_text\",\"full_text_md5\",\"rating\",\"read_count\",\"created\",\"updated\" FROM \"gPapers_paper_1337_TMP\";",
+        "DROP TABLE \"gPapers_paper_1337_TMP\";",
+    ],
 ] # don't delete this comment! ## sqlite3_evolutions_end ##

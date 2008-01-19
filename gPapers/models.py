@@ -91,6 +91,7 @@ class Paper(models.Model):
     full_text = models.FileField(upload_to=os.path.join('papers','%Y','%m'))
     full_text_md5 = models.CharField(max_length='32', blank=True)
     rating = models.IntegerField(default=0)
+    read_count = models.IntegerField(default=0)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     

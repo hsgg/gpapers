@@ -18,7 +18,7 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 import commands, dircache, getopt, math, pwd, os, re, string, sys, thread, threading, time, traceback
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from time import strptime
 #from BeautifulSoup 
 import BeautifulSoup
@@ -846,6 +846,9 @@ class MainGUI:
             else:
                 icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
             self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( playlist.title, icon, playlist.id, True ) )
+        self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>recently added</i>', left_pane.render_icon(gtk.STOCK_NEW, gtk.ICON_SIZE_MENU), -2, True ) )
+        self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>most often read</i>', left_pane.render_icon(gtk.STOCK_DIALOG_INFO, gtk.ICON_SIZE_MENU), -3, True ) )
+        self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>highest rated</i>', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'emblem-favorite.png' ) ), -4, True ) )
         self.left_pane_model.append( None, ( 'ACM', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_acm.ico' ) ), -1, False ) )
         for playlist in Playlist.objects.filter(parent='1'):
             if playlist.search_text:
@@ -888,6 +891,15 @@ class MainGUI:
             button.show()
             left_pane_toolbar.insert( button, -1 )
         except: self.current_playlist = None
+        
+        if liststore[rows[0]][2]==-2:
+            self.current_papers = Paper.objects.filter( created__gte= datetime.now()-timedelta(7) )
+        elif liststore[rows[0]][2]==-3:
+            self.current_papers = Paper.objects.order_by('-read_count')[:20]
+        elif liststore[rows[0]][2]==-4:
+            self.current_papers = Paper.objects.order_by('-rating')[:20]
+        else:
+            self.current_papers = None
         
         if self.current_playlist:
             if self.current_playlist.search_text:
@@ -970,6 +982,8 @@ class MainGUI:
             paper = Paper.objects.get(id=paper_id)
             if paper.full_text:
                 desktop.open( paper.get_full_text_filename() )
+                paper.read_count = paper.read_count + 1
+                paper.save()
         except:
             traceback.print_exc()
     
@@ -1275,7 +1289,7 @@ class MainGUI:
             rows = []
             my_library_filter_pane = self.ui.get_widget('my_library_filter_pane')
             
-            if not self.current_playlist:
+            if not self.current_playlist and self.current_papers==None:
                 
                 search_text = self.ui.get_widget('middle_pane_search').get_text()
                 if search_text:
@@ -1331,7 +1345,12 @@ class MainGUI:
                     
             else:
                 my_library_filter_pane.hide()
-                papers = self.current_playlist.papers.all()
+                if self.current_playlist:
+                    papers = self.current_playlist.papers.all()
+                elif self.current_papers!=None:
+                    papers = self.current_papers
+                else:
+                    papers = []
                     
             for paper in papers:
                 authors = []
