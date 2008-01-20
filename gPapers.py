@@ -1615,6 +1615,7 @@ class PaperEditGUI:
         self.ui.get_widget('entry_title').set_text( self.paper.title )
         self.ui.get_widget('entry_doi').set_text( self.paper.doi )
         self.ui.get_widget('textview_abstract').get_buffer().set_text( self.paper.abstract )
+        self.ui.get_widget('filechooserbutton').set_filename( self.paper.get_full_text_filename() )
         self.edit_dialog.show()
         
     def delete(self):
@@ -1627,6 +1628,14 @@ class PaperEditGUI:
         self.paper.doi = self.ui.get_widget('entry_doi').get_text()
         text_buffer = self.ui.get_widget('textview_abstract').get_buffer()
         self.paper.abstract = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
+        new_file_name = self.ui.get_widget('filechooserbutton').get_filename()
+        if new_file_name and new_file_name!=self.paper.get_full_text_filename():
+            try:
+                ext = new_file_name[ new_file_name.rfind('.')+1: ]
+            except:
+                ext = 'unknown'
+            full_text_filename = defaultfilters.slugify(self.paper.doi) +'_'+ defaultfilters.slugify(self.paper.title) +'.'+ defaultfilters.slugify(ext)
+            self.paper.save_full_text_file( full_text_filename, open(new_file_name,'r').read() )
         self.paper.save()
         self.edit_dialog.destroy()
         main_gui.refresh_middle_pane_search()
