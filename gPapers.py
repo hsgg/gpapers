@@ -824,7 +824,7 @@ class MainGUI:
 
         column = gtk.TreeViewColumn()
         renderer = gtk.CellRendererText()
-        renderer.set_property('editable', True)
+        #renderer.set_property('editable', True)
         renderer.set_property('wrap-mode', pango.WRAP_WORD)
         renderer.set_property('wrap-width', 500)
         column.pack_start(renderer, expand=True)
@@ -1543,24 +1543,27 @@ class MainGUI:
                 'EntrezSystem2.PEntrez.Pubmed.Pubmed_ResultsPanel.Pubmed_DisplayBar.Presentation': 'XML',
             }
             params = openanything.fetch( 'http://www.ncbi.nlm.nih.gov/sites/entrez', post_data=post_data )
-            if params['status']==200 or params['status']==302:
-                soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<i>','').replace('</i>','').replace('<s>','').replace('</s>','').replace('<b>','').replace('</b>','').replace('&gt;','>').replace('&lt;','<') )
-                for node in soup.findAll( 'tt', attrs={'class':'xmlrep'} ):
-                    print 'found one ========================================================'
-                    print node.prettify()
-                    continue
+            post_data['EntrezSystem2.PEntrez.Pubmed.Pubmed_ResultsPanel.Pubmed_DisplayBar.Presentation'] = 'AbstractPlus'
+            params2 = openanything.fetch( 'http://www.ncbi.nlm.nih.gov/sites/entrez', post_data=post_data )
+            if (params['status']==200 or params['status']==302) and (params2['status']==200 or params2['status']==302):
+                soup = BeautifulSoup.BeautifulStoneSoup( params['data'].replace('<i>','').replace('</i>','').replace('<s>','').replace('</s>','').replace('<b>','').replace('</b>','').replace('&gt;','>').replace('&lt;','<') )
+                soup2 = BeautifulSoup.BeautifulSoup( params2['data'] )
+                nodes = soup.findAll( 'tt', attrs={'class':'xmlrep'} )
+                nodes2 = soup2.findAll( 'div', attrs={'class':'PubmedArticle'} )
+                paired_nodes = []
+                print len(nodes), len(nodes2)
+                for i in range(0,len(nodes)):
+                    paired_nodes.append( (nodes[i], nodes2[i]) )
+                for node, node2 in paired_nodes:
+                    #print 'found one ========================================================'
+                    #print node.prettify()
+                    #print node2.prettify()
                     try:
-                        tds = node.findAll( 'td', attrs={'class':'bodyCopyBlackLargeSpaced'} )
-                        title = html_strip( tds[1].strong.string )
-                        #print 'tds[1].contents', tds[1].contents
-                        authors = html_strip( tds[1].contents[2].string )
-                        if authors.find(';'):
-                            first_author = authors[0:authors.find(';')]
-                        else:
-                            first_author = authors
-                        #print 'first_author', first_author
+                        authors = []
+                        for author_node in node.findAll('author'):
+                            authors.append( author_node.find('firstname').string + ' '+ author_node.find('lastname').string )
                         try:
-                            paper = Paper.objects.get( title=title, authors__name__exact=first_author )
+                            paper = Paper.objects.get( title=title, authors__name__exact=authors[0] )
                             paper_id = paper.id
                             if os.path.isfile( paper.get_full_text_filename() ):
                                 icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
@@ -1571,25 +1574,31 @@ class MainGUI:
                             paper = None
                             paper_id = -1
                             icon = None
+                        try: journal = html_strip( node2.findAll('a')[0].string )
+                        except: journal = ''
+                        try: doi = html_strip( node.find('ArticleId', IdType='doi').string )
+                        except: doi = ''
+                        try: abstract = html_strip( node2.find('p', attrs={'class':'abstract'}).string )
+                        except: abstract = ''
                         row = ( 
                             paper_id, # paper id 
-                            authors, # authors 
-                            title, # title 
-                            html_strip( tds[1].contents[5].string ), # journal 
-                            '', # year 
+                            ', '.join(authors), # authors 
+                            html_strip( node.find('articletitle').string ), # title 
+                            journal, # journal 
+                            html_strip( node.find('journal').find('year').string ), # year 
                             0, # ranking
-                            '', # abstract
+                            abstract, # abstract
                             icon, # icon
-                            IEEE_BASE_URL + node.findAll('a', attrs={'class':'bodyCopySpaced'})[0]['href'], # import_url
-                            '', # doi
+                            '', # import_url
+                            doi, # doi
                             '', # created
                             '', # updated
                         )
-                        #print thread.get_ident(), 'row =', row
+                        print thread.get_ident(), 'row =', row
                         rows.append( row )
                     except: 
-                        pass
-                        #traceback.print_exc()
+                        #pass
+                        traceback.print_exc()
                     
                 self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
             else:
