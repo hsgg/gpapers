@@ -865,6 +865,12 @@ class MainGUI:
                 icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
             self.left_pane_model.append( self.left_pane_model.get_iter((2),), ( playlist.title, icon, playlist.id, True ) )
         self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) ), -1, False ) )
+        for playlist in Playlist.objects.filter(parent='3'):
+            if playlist.search_text:
+                icon = left_pane.render_icon(gtk.STOCK_FIND, gtk.ICON_SIZE_MENU)
+            else:
+                icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
+            self.left_pane_model.append( self.left_pane_model.get_iter((3),), ( playlist.title, icon, playlist.id, True ) )
         left_pane.expand_all()
         self.ui.get_widget('left_pane').get_selection().select_path((0,))
 
@@ -1469,6 +1475,80 @@ class MainGUI:
             if params['status']==200 or params['status']==302:
                 soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<!-BMS End-->','') )
                 for node in soup.findAll( 'td', attrs={'class':'bodyCopyBlackLarge'} ):
+                    try:
+                        tds = node.findAll( 'td', attrs={'class':'bodyCopyBlackLargeSpaced'} )
+                        title = html_strip( tds[1].strong.string )
+                        #print 'tds[1].contents', tds[1].contents
+                        authors = html_strip( tds[1].contents[2].string )
+                        if authors.find(';'):
+                            first_author = authors[0:authors.find(';')]
+                        else:
+                            first_author = authors
+                        #print 'first_author', first_author
+                        try:
+                            paper = Paper.objects.get( title=title, authors__name__exact=first_author )
+                            paper_id = paper.id
+                            if os.path.isfile( paper.get_full_text_filename() ):
+                                icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
+                            else:
+                                icon = None
+                        except:
+                            #traceback.print_exc()
+                            paper = None
+                            paper_id = -1
+                            icon = None
+                        row = ( 
+                            paper_id, # paper id 
+                            authors, # authors 
+                            title, # title 
+                            html_strip( tds[1].contents[5].string ), # journal 
+                            '', # year 
+                            0, # ranking
+                            '', # abstract
+                            icon, # icon
+                            IEEE_BASE_URL + node.findAll('a', attrs={'class':'bodyCopySpaced'})[0]['href'], # import_url
+                            '', # doi
+                            '', # created
+                            '', # updated
+                        )
+                        #print thread.get_ident(), 'row =', row
+                        rows.append( row )
+                    except: 
+                        pass
+                        #traceback.print_exc()
+                    
+                self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+            else:
+                gtk.gdk.threads_enter()
+                error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
+                error.connect('response', lambda x,y: error.destroy())
+                error.set_markup('<b>Unable to Search External Repository</b>\n\nHTTP Error code: %i' % params['status'])
+                error.run()
+                gtk.gdk.threads_leave()
+        except:
+            traceback.print_exc()
+        self.active_thread_ids.remove( thread.get_ident() )
+
+    def refresh_middle_pane_from_pubmed(self):
+        if not self.ui.get_widget('middle_pane_search').get_text(): return
+        self.active_thread_ids.add( thread.get_ident() )
+        rows = []
+        try:
+            post_data = {
+                'EntrezSystem2.PEntrez.DbConnector.Db': 'pubmed',
+                'EntrezSystem2.PEntrez.DbConnector.TermToSearch': self.ui.get_widget('middle_pane_search').get_text(),
+                'EntrezSystem2.PEntrez.Pubmed.CommandTab.LimitsActive': 'false',
+                'EntrezSystem2.PEntrez.Pubmed.Pubmed_ResultsPanel.Pager.InitialPageSize': '20',
+                'EntrezSystem2.PEntrez.Pubmed.Pubmed_ResultsPanel.Pubmed_DisplayBar.PageSize': '20',
+                'EntrezSystem2.PEntrez.Pubmed.Pubmed_ResultsPanel.Pubmed_DisplayBar.Presentation': 'XML',
+            }
+            params = openanything.fetch( 'http://www.ncbi.nlm.nih.gov/sites/entrez', post_data=post_data )
+            if params['status']==200 or params['status']==302:
+                soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<i>','').replace('</i>','').replace('<s>','').replace('</s>','').replace('<b>','').replace('</b>','').replace('&gt;','>').replace('&lt;','<') )
+                for node in soup.findAll( 'tt', attrs={'class':'xmlrep'} ):
+                    print 'found one ========================================================'
+                    print node.prettify()
+                    continue
                     try:
                         tds = node.findAll( 'td', attrs={'class':'bodyCopyBlackLargeSpaced'} )
                         title = html_strip( tds[1].strong.string )
