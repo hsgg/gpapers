@@ -17,7 +17,7 @@
 #    with this program; if not, write to the Free Software Foundation, Inc.,
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-import commands, dircache, getopt, math, pwd, os, re, string, sys, thread, threading, time, traceback
+import commands, dircache, getopt, math, os, re, string, sys, thread, threading, time, traceback
 from datetime import date, datetime, timedelta
 from time import strptime
 #from BeautifulSoup 
@@ -848,6 +848,7 @@ class MainGUI:
             self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( playlist.title, icon, playlist.id, True ) )
         self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>recently added</i>', left_pane.render_icon(gtk.STOCK_NEW, gtk.ICON_SIZE_MENU), -2, False ) )
         self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>most often read</i>', left_pane.render_icon(gtk.STOCK_DIALOG_INFO, gtk.ICON_SIZE_MENU), -3, False ) )
+        self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>never read</i>', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'applications-development.png' ) ), -5, False ) )
         self.left_pane_model.append( self.left_pane_model.get_iter((0),), ( '<i>highest rated</i>', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'emblem-favorite.png' ) ), -4, False ) )
         self.left_pane_model.append( None, ( 'ACM', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_acm.ico' ) ), -1, False ) )
         for playlist in Playlist.objects.filter(parent='1'):
@@ -863,7 +864,7 @@ class MainGUI:
             else:
                 icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
             self.left_pane_model.append( self.left_pane_model.get_iter((2),), ( playlist.title, icon, playlist.id, True ) )
-        #self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) )  ) )
+        self.left_pane_model.append( None, ( 'PubMed', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_pubmed.ico' ) ), -1, False ) )
         left_pane.expand_all()
         self.ui.get_widget('left_pane').get_selection().select_path((0,))
 
@@ -893,11 +894,13 @@ class MainGUI:
         except: self.current_playlist = None
         
         if liststore[rows[0]][2]==-2:
-            self.current_papers = Paper.objects.filter( created__gte= datetime.now()-timedelta(7) )
+            self.current_papers = Paper.objects.filter( created__gte= datetime.now()-timedelta(7) ).order_by('-created')[:20]
         elif liststore[rows[0]][2]==-3:
-            self.current_papers = Paper.objects.order_by('-read_count')[:20]
+            self.current_papers = Paper.objects.filter( read_count__gte=1 ).order_by('-read_count')[:20]
         elif liststore[rows[0]][2]==-4:
-            self.current_papers = Paper.objects.order_by('-rating')[:20]
+            self.current_papers = Paper.objects.filter( rating__gte=1 ).order_by('-rating')[:20]
+        elif liststore[rows[0]][2]==-5:
+            self.current_papers = Paper.objects.filter( read_count=0 )
         else:
             self.current_papers = None
         
