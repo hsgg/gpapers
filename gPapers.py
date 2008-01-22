@@ -56,6 +56,7 @@ except:
     sys.exit()
 
 LEFT_PANE_ADD_TO_PLAYLIST_DND_ACTION = ('add_to_playlist', gtk.TARGET_SAME_APP, 0)
+MIDDLE_TOP_PANE_REORDER_PLAYLIST_DND_ACTION = ('reorder_playlist', gtk.TARGET_SAME_WIDGET, 1)
 
 try:
     import sqlite3
@@ -985,8 +986,10 @@ class MainGUI:
         middle_top_pane.connect('row-activated', self.handle_middle_top_pane_row_activated )
         middle_top_pane.get_selection().connect('changed', self.select_middle_top_pane_item)
         
-        middle_top_pane.enable_model_drag_source( gtk.gdk.BUTTON1_MASK, [LEFT_PANE_ADD_TO_PLAYLIST_DND_ACTION], gtk.gdk.ACTION_COPY )
+        middle_top_pane.enable_model_drag_source( gtk.gdk.BUTTON1_MASK, [LEFT_PANE_ADD_TO_PLAYLIST_DND_ACTION, MIDDLE_TOP_PANE_REORDER_PLAYLIST_DND_ACTION], gtk.gdk.ACTION_COPY | gtk.gdk.ACTION_MOVE )
         middle_top_pane.connect('drag-data-get', self.handle_middle_top_pane_drag_data_get)
+        middle_top_pane.enable_model_drag_dest( [MIDDLE_TOP_PANE_REORDER_PLAYLIST_DND_ACTION], gtk.gdk.ACTION_MOVE )
+        middle_top_pane.connect('drag-data-received', self.handle_middle_top_pane_drag_data_received_event)
     
     def handle_middle_top_pane_row_activated(self, treeview, path, view_column):
         liststore, rows = treeview.get_selection().get_selected_rows()
@@ -1051,6 +1054,41 @@ class MainGUI:
                 playlist.papers.add( Paper.objects.get(id=int(data)) )
                 playlist.save()
             return
+        except:
+            traceback.print_exc()
+            
+    def handle_middle_top_pane_drag_data_received_event(self, treeview, context, x, y, selection, info, timestamp):
+        try:
+            drop_info = treeview.get_dest_row_at_pos(x, y)
+            if drop_info and self.current_playlist:
+                model = treeview.get_model()
+                path, position = drop_info
+                data = selection.data
+                playlist = self.current_playlist
+                paper_list = list(playlist.papers.all())
+                l = []
+                for i in range(0,len(paper_list)):
+                    paper = paper_list[i]
+                    if str(paper.id)==str(data):
+                        break
+                if path[0]==i:
+                    return
+                if path[0]==i+1 and (position==gtk.TREE_VIEW_DROP_AFTER or position==gtk.TREE_VIEW_DROP_INTO_OR_AFTER):
+                    return
+                if path[0]==i-1 and (position==gtk.TREE_VIEW_DROP_BEFORE or position==gtk.TREE_VIEW_DROP_INTO_OR_BEFORE):
+                    return
+                paper_list[i] = None
+                if position==gtk.TREE_VIEW_DROP_BEFORE or position==gtk.TREE_VIEW_DROP_INTO_OR_BEFORE:
+                    paper_list.insert( path[0], paper )
+                if position==gtk.TREE_VIEW_DROP_AFTER or position==gtk.TREE_VIEW_DROP_INTO_OR_AFTER:
+                    paper_list.insert( path[0]+1, paper )
+                paper_list.remove(None)
+                playlist.papers.clear()
+                for paper in paper_list:
+                    playlist.papers.add(paper)
+                thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) )
+            if not self.current_playlist:
+                print 'can only reorder playlists'
         except:
             traceback.print_exc()
         
@@ -1359,7 +1397,7 @@ class MainGUI:
             else:
                 my_library_filter_pane.hide()
                 if self.current_playlist:
-                    papers = self.current_playlist.papers.all()
+                    papers = self.current_playlist.get_papers_in_order()
                 elif self.current_papers!=None:
                     papers = self.current_papers
                 else:

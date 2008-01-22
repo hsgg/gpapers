@@ -157,6 +157,16 @@ class Playlist(models.Model):
     papers = models.ManyToManyField(Paper)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
+    
+    def get_papers_in_order(self):
+        from django.db import connection
+        cursor = connection.cursor()
+        cursor.execute("select paper_id from gPapers_playlist_papers where playlist_id=%s order by id;", [self.id])
+        rows = cursor.fetchall()
+        paper_list = []
+        for row in rows:
+            paper_list.append( Paper.objects.get(id=row[0]) )
+        return paper_list
 
     class Admin:
         list_display = ( 'id', 'title', 'parent', 'search_text' )
