@@ -609,6 +609,7 @@ class MainGUI:
     
     current_middle_top_pane_refresh_thread_ident = None
     active_thread_ids = set()
+    treeview_sort_states = {}
     
     def import_url(self, o):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
@@ -777,6 +778,7 @@ class MainGUI:
         column = gtk.TreeViewColumn("Author", gtk.CellRendererText(), text=1)
         column.set_min_width(128)
         column.set_expand(True)
+        column.connect('clicked', self.sort_model_by_column, self.author_filter_model, 1)
         author_filter.append_column( column )
         self.make_all_columns_resizeable_clickable_ellipsize( author_filter.get_columns() )
         author_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
@@ -790,6 +792,7 @@ class MainGUI:
         column = gtk.TreeViewColumn("Organization", gtk.CellRendererText(), text=1)
         column.set_min_width(128)
         column.set_expand(True)
+        column.connect('clicked', self.sort_model_by_column, self.organization_filter_model, 1)
         organization_filter.append_column( column )
         self.make_all_columns_resizeable_clickable_ellipsize( organization_filter.get_columns() )
         organization_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
@@ -803,10 +806,17 @@ class MainGUI:
         column = gtk.TreeViewColumn("Source", gtk.CellRendererText(), text=1)
         column.set_min_width(128)
         column.set_expand(True)
+        column.connect('clicked', self.sort_model_by_column, self.source_filter_model, 1)
         source_filter.append_column( column )
-        source_filter.append_column( gtk.TreeViewColumn("Issue", gtk.CellRendererText(), text=2) )
-        source_filter.append_column( gtk.TreeViewColumn("Location", gtk.CellRendererText(), text=3) )
-        source_filter.append_column( gtk.TreeViewColumn("Publisher", gtk.CellRendererText(), text=4) )
+        column = gtk.TreeViewColumn("Issue", gtk.CellRendererText(), text=2)
+        column.connect('clicked', self.sort_model_by_column, self.source_filter_model, 2)
+        source_filter.append_column( column )
+        column = gtk.TreeViewColumn("Location", gtk.CellRendererText(), text=3)
+        column.connect('clicked', self.sort_model_by_column, self.source_filter_model, 3)
+        source_filter.append_column( column )
+        column = gtk.TreeViewColumn("Publisher", gtk.CellRendererText(), text=4)
+        column.connect('clicked', self.sort_model_by_column, self.source_filter_model, 4)
+        source_filter.append_column( column )
         self.make_all_columns_resizeable_clickable_ellipsize( source_filter.get_columns() )
         source_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
         source_filter.connect('row-activated', self.handle_source_filter_row_activated )
@@ -976,27 +986,33 @@ class MainGUI:
         renderer = gtk.CellRendererText()
         column.pack_start(renderer, expand=True)
         column.add_attribute(renderer, 'markup', 2)        
+        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 2)
         middle_top_pane.append_column(column)
         
         column = gtk.TreeViewColumn("Authors", gtk.CellRendererText(), markup=1)
         column.set_min_width(128)
         column.set_expand(True)
+        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 1)
         middle_top_pane.append_column( column )
         column = gtk.TreeViewColumn("Journal", gtk.CellRendererText(), markup=3)
         column.set_min_width(128)
         column.set_expand(True)
+        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 3)
         middle_top_pane.append_column( column )
         column = gtk.TreeViewColumn("Year", gtk.CellRendererText(), markup=4)
         column.set_min_width(48)
         column.set_expand(False)
+        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 4)
         middle_top_pane.append_column( column )
         column = gtk.TreeViewColumn("Rating", gtk.CellRendererText(), markup=5)
         column.set_min_width(64)
         column.set_expand(False)
+        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 5)
         middle_top_pane.append_column( column )
         column = gtk.TreeViewColumn("Imported", gtk.CellRendererText(), markup=10)
         column.set_min_width(80)
         column.set_expand(False)
+        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 10)
         middle_top_pane.append_column( column )
         
         self.make_all_columns_resizeable_clickable_ellipsize( middle_top_pane.get_columns() )
@@ -1009,6 +1025,31 @@ class MainGUI:
         middle_top_pane.enable_model_drag_dest( [MIDDLE_TOP_PANE_REORDER_PLAYLIST_DND_ACTION], gtk.gdk.ACTION_MOVE )
         middle_top_pane.connect('drag-data-received', self.handle_middle_top_pane_drag_data_received_event)
     
+    def sort_model_by_column(self, column, model, model_column_number):
+        sort_order = self.treeview_sort_states.get( str(model)+'-sort_order', gtk.SORT_ASCENDING )
+        last_sort_column = self.treeview_sort_states.get( str(model)+'-last_sort_column', None )
+        
+        if last_sort_column is not None:
+           last_sort_column.set_sort_indicator(False)
+    
+        # Ascending or descending?
+        if last_sort_column == column:
+            if sort_order == gtk.SORT_ASCENDING:
+                sort_order = gtk.SORT_DESCENDING
+            else:
+                sort_order = gtk.SORT_ASCENDING
+        else:
+            sort_order = gtk.SORT_ASCENDING
+            self.treeview_sort_states[str(model)+'-last_sort_column'] = column
+        self.treeview_sort_states[str(model)+'-sort_order'] = sort_order
+
+        rows = [tuple(r) + (i,) for i, r in enumerate(model)]
+        rows.sort( key=lambda x:x[model_column_number], reverse=sort_order==gtk.SORT_DESCENDING )
+        model.reorder([r[-1] for r in rows])
+        
+        column.set_sort_indicator(True)
+        column.set_sort_order(sort_order)        
+     
     def handle_middle_top_pane_row_activated(self, treeview, path, view_column):
         liststore, rows = treeview.get_selection().get_selected_rows()
         paper_id = treeview.get_model().get_value( treeview.get_model().get_iter(path), 0 )
@@ -1344,6 +1385,8 @@ class MainGUI:
     
     def update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(self, rows):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
+        for column in middle_top_pane.get_columns():
+            column.set_sort_indicator(False)
         if self.current_middle_top_pane_refresh_thread_ident==thread.get_ident():
             gtk.gdk.threads_enter()
             self.middle_top_pane_model.clear()
