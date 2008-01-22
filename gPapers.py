@@ -22,6 +22,8 @@ from datetime import date, datetime, timedelta
 from time import strptime
 #from BeautifulSoup 
 import BeautifulSoup
+from htmlentitydefs import name2codepoint as n2cp
+
 
 RUN_FROM_DIR = os.path.abspath(os.path.dirname(sys.argv[0])) + '/'
 PROGRAM = 'gPapers'
@@ -103,8 +105,24 @@ from gPapers.models import *
 
 p_whitespace = re.compile( '[\s]+')
 
+def substitute_entity(match):
+    ent = match.group(2)
+    if match.group(1) == "#":
+        return unichr(int(ent))
+    else:
+        cp = n2cp.get(ent)
+
+        if cp:
+            return unichr(cp)
+        else:
+            return match.group()
+
+def decode_htmlentities(string):
+    entity_re = re.compile("&(#?)(\d{1,5}|\w{1,8});")
+    return entity_re.subn(substitute_entity, string)[0]
+
 def html_strip(s):
-    return p_whitespace.sub( ' ', str(s).replace('&nbsp;', ' ').strip() )
+    return decode_htmlentities( p_whitespace.sub( ' ', str(s).replace('&nbsp;', ' ').strip() ) )
 
 def humanize_count(x, s, p, places=1):
     output = []
