@@ -267,7 +267,10 @@ def import_acm_citation(params):
         title = []
         for node in soup.findAll('td', attrs={'class':'medium-text'})[0].findAll('strong'):
             title.append(node.string)
-        try: doi = str(soup.find('form', attrs={'name':'popbinder'}).nextSibling.table.findAll('tr')[-1].findAll('td')[-1].a.string)
+        try: 
+            doi = str(soup.find('form', attrs={'name':'popbinder'}).nextSibling.table.findAll('tr')[-1].findAll('td')[-1].a.string)
+            if doi.startswith('http://doi.acm.org/'):
+                doi = doi[len('http://doi.acm.org/'):]
         except: doi = ''
 
         full_text_data = None
@@ -1541,7 +1544,7 @@ class MainGUI:
                         paper_id, # paper id 
                         authors, # authors 
                         title, # title 
-                        ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[3].div.contents if x.string] ), # journal 
+                        ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[3].div.contents if len(html_strip(x.string).replace('\n','').replace('\r','').replace('\t',''))] ), # journal 
                         html_strip( tds[1].string )[-4:], # year 
                         0, # ranking
                         ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[-1].findAll() if x.string] ), # abstract
