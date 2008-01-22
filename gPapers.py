@@ -903,6 +903,13 @@ class MainGUI:
             else:
                 icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
             self.left_pane_model.append( self.left_pane_model.get_iter((3),), ( playlist.title, icon, playlist.id, True ) )
+        self.left_pane_model.append( None, ( 'CiteSeer', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_citeseer.ico' ) ), -1, False ) )
+        for playlist in Playlist.objects.filter(parent='4'):
+            if playlist.search_text:
+                icon = left_pane.render_icon(gtk.STOCK_FIND, gtk.ICON_SIZE_MENU)
+            else:
+                icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
+            self.left_pane_model.append( self.left_pane_model.get_iter((4),), ( playlist.title, icon, playlist.id, True ) )
         left_pane.expand_all()
         self.ui.get_widget('left_pane').get_selection().select_path((0,))
 
@@ -1337,6 +1344,10 @@ class MainGUI:
                 button = gtk.ToolButton(gtk.STOCK_REMOVE)
                 button.set_tooltip_markup('Remove these papers from your library...')
                 button.connect( 'clicked', lambda x: self.delete_papers( selected_valid_paper_ids ) )
+                paper_information_toolbar.insert( button, -1 )
+                button = gtk.ToolButton(gtk.STOCK_DND_MULTIPLE)
+                button.set_tooltip_markup('Create a new collection from these documents...')
+                button.connect( 'clicked', lambda x: self.create_playlist( selected_valid_paper_ids ) )
                 paper_information_toolbar.insert( button, -1 )
 
         paper_information_toolbar.show_all()

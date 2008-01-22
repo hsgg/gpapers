@@ -150,6 +150,7 @@ class Playlist(models.Model):
         ('1', 'ACM'),
         ('2', 'IEEE'),
         ('3', 'PubMed'),
+        ('4', 'CiteSeer'),
     )
     title = models.CharField(max_length='1024', blank=True)
     search_text = models.CharField(max_length='1024', blank=True)
