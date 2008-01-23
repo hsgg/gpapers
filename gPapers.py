@@ -978,8 +978,8 @@ class MainGUI:
 
     def init_middle_top_pane(self):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
-        # id, authors, title, journal, year, rating, abstract, icon, import_url, doi, created, updated
-        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, gtk.gdk.Pixbuf, str, str, str, str )
+        # id, authors, title, journal, year, rating, abstract, icon, import_url, doi, created, updated, empty_str
+        self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, gtk.gdk.Pixbuf, str, str, str, str, str )
         middle_top_pane.set_model( self.middle_top_pane_model )
         middle_top_pane.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         
@@ -1016,7 +1016,7 @@ class MainGUI:
         column.set_expand(False)
         column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 4)
         middle_top_pane.append_column( column )
-        column = gtk.TreeViewColumn("Rating", gtk.CellRendererText(), markup=5)
+        column = gtk.TreeViewColumn("Rating", gtk.CellRendererProgress(), value=5, text=12)
         column.set_min_width(64)
         column.set_expand(False)
         column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 5)
@@ -1502,13 +1502,14 @@ class MainGUI:
                     paper.title,
                     journal, 
                     pub_year, 
-                    paper.rating, 
+                    paper.rating/0.05, 
                     paper.abstract, 
                     icon, # icon
                     None, # import_url
                     paper.doi, # doi
                     paper.created.strftime(DATE_FORMAT), # created
                     paper.updated.strftime(DATE_FORMAT), # updated
+                    '', # empty_str
                 ) )
             self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
             self.refresh_my_library_count()
@@ -1566,6 +1567,7 @@ class MainGUI:
                         '', # doi
                         '', # created
                         '', # updated
+                        '', # empty_str
                     )
                     #print thread.get_ident(), 'row =', row
                     rows.append( row )
@@ -1625,6 +1627,7 @@ class MainGUI:
                             '', # doi
                             '', # created
                             '', # updated
+                            '', # empty_str
                         )
                         #print thread.get_ident(), 'row =', row
                         rows.append( row )
@@ -1708,6 +1711,7 @@ class MainGUI:
                             doi, # doi
                             '', # created
                             '', # updated
+                            '', # empty_str
                         )
                         print thread.get_ident(), 'row =', row
                         rows.append( row )
@@ -1775,6 +1779,7 @@ class MainGUI:
                             doi, # doi
                             '', # created
                             '', # updated
+                            '', # empty_str
                         )
                         print thread.get_ident(), 'row =', row
                         rows.append( row )
@@ -1891,6 +1896,8 @@ class PaperEditGUI:
         self.ui.get_widget('textview_abstract').get_buffer().set_text( self.paper.abstract )
         self.ui.get_widget('textview_bibtex').get_buffer().set_text( self.paper.bibtex )
         self.ui.get_widget('filechooserbutton').set_filename( self.paper.get_full_text_filename() )
+        self.ui.get_widget('spinbutton_rating').set_value( self.paper.rating )
+        self.ui.get_widget('spinbutton_read_count').set_value( self.paper.read_count )
         self.edit_dialog.show()
         
     def delete(self):
@@ -1905,6 +1912,8 @@ class PaperEditGUI:
         self.paper.abstract = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
         text_buffer = self.ui.get_widget('textview_bibtex').get_buffer()
         self.paper.bibtex = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
+        self.paper.rating = self.ui.get_widget('spinbutton_rating').get_value()
+        self.paper.read_count = self.ui.get_widget('spinbutton_read_count').get_value()
         new_file_name = self.ui.get_widget('filechooserbutton').get_filename()
         if new_file_name and new_file_name!=self.paper.get_full_text_filename():
             try:
