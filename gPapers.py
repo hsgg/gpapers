@@ -972,6 +972,8 @@ class MainGUI:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_ieee, () )
         if rows[0][0]==3:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_pubmed, () )
+        if rows[0][0]==4:
+            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_citeseer, () )
         self.select_middle_top_pane_item( self.ui.get_widget('middle_top_pane').get_selection() )
 
     def init_middle_top_pane(self):
@@ -1703,6 +1705,73 @@ class MainGUI:
                             abstract, # abstract
                             icon, # icon
                             '', # import_url
+                            doi, # doi
+                            '', # created
+                            '', # updated
+                        )
+                        print thread.get_ident(), 'row =', row
+                        rows.append( row )
+                    except: 
+                        #pass
+                        traceback.print_exc()
+                    
+                self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+            else:
+                gtk.gdk.threads_enter()
+                error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
+                error.connect('response', lambda x,y: error.destroy())
+                error.set_markup('<b>Unable to Search External Repository</b>\n\nHTTP Error code: %i' % params['status'])
+                error.run()
+                gtk.gdk.threads_leave()
+        except:
+            traceback.print_exc()
+        self.active_thread_ids.remove( thread.get_ident() )
+
+    def refresh_middle_pane_from_citeseer(self):
+        if not self.ui.get_widget('middle_pane_search').get_text(): return
+        self.active_thread_ids.add( thread.get_ident() )
+        rows = []
+        try:
+            params = openanything.fetch( 'http://citeseer.ist.psu.edu/cis?q=%s&cs=1&am=50' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
+            if params['status']==200 or params['status']==302:
+                for html in params['data'][ params['data'].find('<!--RLS-->')+20 : params['data'].find('<!--RLE-->') ].split('<!--RIS-->'):
+                    print '============================================================='
+                    print html
+                    node = BeautifulSoup.BeautifulStoneSoup( html.replace('<b>','').replace('</b>','') )
+                    try:
+                        title_authors_year = node.findAll('a')[0].string
+                        o = re.search( '(.*) - (.*) [(](.*)[)]', title_authors_year )
+                        title = html_strip( o.group(1) )
+                        authors = html_strip( o.group(2) )
+                        year = html_strip( o.group(3) )
+                        try:
+                            paper = Paper.objects.get( title=title, authors__name__contains=authors.split(', ')[0] )
+                            paper_id = paper.id
+                            if os.path.isfile( paper.get_full_text_filename() ):
+                                icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
+                            else:
+                                icon = None
+                        except:
+                            #traceback.print_exc()
+                            paper = None
+                            paper_id = -1
+                            icon = None
+                        try: journal = html_strip( node2.findAll('a')[0].string )
+                        except: journal = ''
+                        try: doi = html_strip( node.find('ArticleId', IdType='doi').string )
+                        except: doi = ''
+                        try: abstract = html_strip( node2.find('p', attrs={'class':'abstract'}).string )
+                        except: abstract = ''
+                        row = ( 
+                            paper_id, # paper id 
+                            authors, # authors 
+                            title, # title 
+                            journal, # journal 
+                            year, # year 
+                            0, # ranking
+                            abstract, # abstract
+                            icon, # icon
+                            node.findAll('a')[0]['href'], # import_url
                             doi, # doi
                             '', # created
                             '', # updated
