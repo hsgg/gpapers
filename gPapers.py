@@ -1820,6 +1820,7 @@ class PaperEditGUI:
         self.ui.get_widget('entry_title').set_text( self.paper.title )
         self.ui.get_widget('entry_doi').set_text( self.paper.doi )
         self.ui.get_widget('textview_abstract').get_buffer().set_text( self.paper.abstract )
+        self.ui.get_widget('textview_bibtex').get_buffer().set_text( self.paper.bibtex )
         self.ui.get_widget('filechooserbutton').set_filename( self.paper.get_full_text_filename() )
         self.edit_dialog.show()
         
@@ -1833,6 +1834,8 @@ class PaperEditGUI:
         self.paper.doi = self.ui.get_widget('entry_doi').get_text()
         text_buffer = self.ui.get_widget('textview_abstract').get_buffer()
         self.paper.abstract = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
+        text_buffer = self.ui.get_widget('textview_bibtex').get_buffer()
+        self.paper.bibtex = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
         new_file_name = self.ui.get_widget('filechooserbutton').get_filename()
         if new_file_name and new_file_name!=self.paper.get_full_text_filename():
             try:
