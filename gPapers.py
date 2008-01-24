@@ -165,6 +165,42 @@ def set_model_from_list(cb, items, index=None):
             model.append((i[index],))
     cb.set_model(model)
 
+def make_all_columns_resizeable_clickable_ellipsize(columns):
+    for column in columns:
+        column.set_resizable(True)
+        column.set_clickable(True)
+        #column.connect('clicked', self.sortRows)
+        for renderer in column.get_cell_renderers():
+            if renderer.__class__.__name__=='CellRendererText':
+                renderer.set_property( 'ellipsize', pango.ELLIPSIZE_END )
+        
+treeview_sort_states = {}
+def sort_model_by_column(column, model, model_column_number):
+    global treeview_sort_states
+    sort_order = treeview_sort_states.get( str(model)+'-sort_order', gtk.SORT_ASCENDING )
+    last_sort_column = treeview_sort_states.get( str(model)+'-last_sort_column', None )
+    
+    if last_sort_column is not None:
+       last_sort_column.set_sort_indicator(False)
+
+    # Ascending or descending?
+    if last_sort_column == column:
+        if sort_order == gtk.SORT_ASCENDING:
+            sort_order = gtk.SORT_DESCENDING
+        else:
+            sort_order = gtk.SORT_ASCENDING
+    else:
+        sort_order = gtk.SORT_ASCENDING
+        treeview_sort_states[str(model)+'-last_sort_column'] = column
+    treeview_sort_states[str(model)+'-sort_order'] = sort_order
+
+    rows = [tuple(r) + (i,) for i, r in enumerate(model)]
+    rows.sort( key=lambda x:x[model_column_number], reverse=sort_order==gtk.SORT_DESCENDING )
+    model.reorder([r[-1] for r in rows])
+    
+    column.set_sort_indicator(True)
+    column.set_sort_order(sort_order)        
+     
 def fetch_citation_via_url(url):
     print 'trying to fetch:', url
     t = thread.start_new_thread( import_citation, (url,) )
@@ -612,7 +648,6 @@ class MainGUI:
     
     current_middle_top_pane_refresh_thread_ident = None
     active_thread_ids = set()
-    treeview_sort_states = {}
     
     def import_url(self, o):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
@@ -781,11 +816,12 @@ class MainGUI:
         column = gtk.TreeViewColumn("Author", gtk.CellRendererText(), text=1)
         column.set_min_width(128)
         column.set_expand(True)
-        column.connect('clicked', self.sort_model_by_column, self.author_filter_model, 1)
+        column.connect('clicked', sort_model_by_column, self.author_filter_model, 1)
         author_filter.append_column( column )
-        self.make_all_columns_resizeable_clickable_ellipsize( author_filter.get_columns() )
+        make_all_columns_resizeable_clickable_ellipsize( author_filter.get_columns() )
         author_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
         author_filter.connect('row-activated', self.handle_author_filter_row_activated )
+        author_filter.connect('button-press-event', self.handle_author_filter_button_press_event)
 
         organization_filter = self.ui.get_widget('organization_filter')
         # id, org
@@ -795,11 +831,12 @@ class MainGUI:
         column = gtk.TreeViewColumn("Organization", gtk.CellRendererText(), text=1)
         column.set_min_width(128)
         column.set_expand(True)
-        column.connect('clicked', self.sort_model_by_column, self.organization_filter_model, 1)
+        column.connect('clicked', sort_model_by_column, self.organization_filter_model, 1)
         organization_filter.append_column( column )
-        self.make_all_columns_resizeable_clickable_ellipsize( organization_filter.get_columns() )
+        make_all_columns_resizeable_clickable_ellipsize( organization_filter.get_columns() )
         organization_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
         organization_filter.connect('row-activated', self.handle_organization_filter_row_activated )
+        organization_filter.connect('button-press-event', self.handle_organization_filter_button_press_event)
 
         source_filter = self.ui.get_widget('source_filter')
         # id, name, issue, location, publisher, date
@@ -809,20 +846,21 @@ class MainGUI:
         column = gtk.TreeViewColumn("Source", gtk.CellRendererText(), text=1)
         column.set_min_width(128)
         column.set_expand(True)
-        column.connect('clicked', self.sort_model_by_column, self.source_filter_model, 1)
+        column.connect('clicked', sort_model_by_column, self.source_filter_model, 1)
         source_filter.append_column( column )
         column = gtk.TreeViewColumn("Issue", gtk.CellRendererText(), text=2)
-        column.connect('clicked', self.sort_model_by_column, self.source_filter_model, 2)
+        column.connect('clicked', sort_model_by_column, self.source_filter_model, 2)
         source_filter.append_column( column )
         column = gtk.TreeViewColumn("Location", gtk.CellRendererText(), text=3)
-        column.connect('clicked', self.sort_model_by_column, self.source_filter_model, 3)
+        column.connect('clicked', sort_model_by_column, self.source_filter_model, 3)
         source_filter.append_column( column )
         column = gtk.TreeViewColumn("Publisher", gtk.CellRendererText(), text=4)
-        column.connect('clicked', self.sort_model_by_column, self.source_filter_model, 4)
+        column.connect('clicked', sort_model_by_column, self.source_filter_model, 4)
         source_filter.append_column( column )
-        self.make_all_columns_resizeable_clickable_ellipsize( source_filter.get_columns() )
+        make_all_columns_resizeable_clickable_ellipsize( source_filter.get_columns() )
         source_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
         source_filter.connect('row-activated', self.handle_source_filter_row_activated )
+        source_filter.connect('button-press-event', self.handle_source_filter_button_press_event)
 
     def refresh_my_library_filter_pane(self):
 
@@ -998,36 +1036,36 @@ class MainGUI:
         renderer = gtk.CellRendererText()
         column.pack_start(renderer, expand=True)
         column.add_attribute(renderer, 'markup', 2)        
-        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 2)
+        column.connect('clicked', sort_model_by_column, self.middle_top_pane_model, 2)
         middle_top_pane.append_column(column)
         
         column = gtk.TreeViewColumn("Authors", gtk.CellRendererText(), markup=1)
         column.set_min_width(128)
         column.set_expand(True)
-        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 1)
+        column.connect('clicked', sort_model_by_column, self.middle_top_pane_model, 1)
         middle_top_pane.append_column( column )
         column = gtk.TreeViewColumn("Journal", gtk.CellRendererText(), markup=3)
         column.set_min_width(128)
         column.set_expand(True)
-        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 3)
+        column.connect('clicked', sort_model_by_column, self.middle_top_pane_model, 3)
         middle_top_pane.append_column( column )
         column = gtk.TreeViewColumn("Year", gtk.CellRendererText(), markup=4)
         column.set_min_width(48)
         column.set_expand(False)
-        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 4)
+        column.connect('clicked', sort_model_by_column, self.middle_top_pane_model, 4)
         middle_top_pane.append_column( column )
         column = gtk.TreeViewColumn("Rating", gtk.CellRendererProgress(), value=5, text=12)
         column.set_min_width(64)
         column.set_expand(False)
-        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 5)
+        column.connect('clicked', sort_model_by_column, self.middle_top_pane_model, 5)
         middle_top_pane.append_column( column )
         column = gtk.TreeViewColumn("Imported", gtk.CellRendererText(), markup=10)
         column.set_min_width(80)
         column.set_expand(False)
-        column.connect('clicked', self.sort_model_by_column, self.middle_top_pane_model, 10)
+        column.connect('clicked', sort_model_by_column, self.middle_top_pane_model, 10)
         middle_top_pane.append_column( column )
         
-        self.make_all_columns_resizeable_clickable_ellipsize( middle_top_pane.get_columns() )
+        make_all_columns_resizeable_clickable_ellipsize( middle_top_pane.get_columns() )
         
         middle_top_pane.connect('row-activated', self.handle_middle_top_pane_row_activated )
         middle_top_pane.get_selection().connect('changed', self.select_middle_top_pane_item)
@@ -1037,31 +1075,6 @@ class MainGUI:
         middle_top_pane.enable_model_drag_dest( [MIDDLE_TOP_PANE_REORDER_PLAYLIST_DND_ACTION], gtk.gdk.ACTION_MOVE )
         middle_top_pane.connect('drag-data-received', self.handle_middle_top_pane_drag_data_received_event)
     
-    def sort_model_by_column(self, column, model, model_column_number):
-        sort_order = self.treeview_sort_states.get( str(model)+'-sort_order', gtk.SORT_ASCENDING )
-        last_sort_column = self.treeview_sort_states.get( str(model)+'-last_sort_column', None )
-        
-        if last_sort_column is not None:
-           last_sort_column.set_sort_indicator(False)
-    
-        # Ascending or descending?
-        if last_sort_column == column:
-            if sort_order == gtk.SORT_ASCENDING:
-                sort_order = gtk.SORT_DESCENDING
-            else:
-                sort_order = gtk.SORT_ASCENDING
-        else:
-            sort_order = gtk.SORT_ASCENDING
-            self.treeview_sort_states[str(model)+'-last_sort_column'] = column
-        self.treeview_sort_states[str(model)+'-sort_order'] = sort_order
-
-        rows = [tuple(r) + (i,) for i, r in enumerate(model)]
-        rows.sort( key=lambda x:x[model_column_number], reverse=sort_order==gtk.SORT_DESCENDING )
-        model.reorder([r[-1] for r in rows])
-        
-        column.set_sort_indicator(True)
-        column.set_sort_order(sort_order)        
-     
     def handle_middle_top_pane_row_activated(self, treeview, path, view_column):
         liststore, rows = treeview.get_selection().get_selected_rows()
         paper_id = treeview.get_model().get_value( treeview.get_model().get_iter(path), 0 )
@@ -1102,13 +1115,82 @@ class MainGUI:
             pthinfo = treeview.get_path_at_pos(x, y)
             if pthinfo is not None:
                 path, col, cellx, celly = pthinfo
-                print 'path, col, cellx, celly', path, col, cellx, celly
                 treeview.grab_focus()
                 treeview.set_cursor( path, col, 0)
-                if len(path)==2 and False:
+                playlist_id = self.left_pane_model.get_value( self.left_pane_model.get_iter(path), 2 )
+                if playlist_id>=0: #len(path)==2:
                     menu = gtk.Menu()
                     delete = gtk.ImageMenuItem(stock_id=gtk.STOCK_DELETE)
-                    #delete.connect( 'activate', self.delete_element, pthinfo[0][0], self.included_dirs, self.refresh_included_dirs_list )
+                    delete.connect( 'activate', lambda x: self.delete_playlist(playlist_id) )
+                    menu.append(delete)
+                    menu.show_all()
+                    menu.popup(None, None, None, event.button, event.get_time())
+            return True
+        
+    def handle_author_filter_button_press_event(self, treeview, event):
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                id = self.author_filter_model.get_value( self.author_filter_model.get_iter(path), 0 )
+                if id>=0: #len(path)==2:
+                    menu = gtk.Menu()
+                    edit = gtk.ImageMenuItem(stock_id=gtk.STOCK_EDIT)
+                    edit.connect( 'activate', lambda x: AuthorEditGUI(id) )
+                    menu.append(edit)
+                    delete = gtk.ImageMenuItem(stock_id=gtk.STOCK_DELETE)
+                    delete.connect( 'activate', lambda x: self.delete_author(id) )
+                    menu.append(delete)
+                    menu.show_all()
+                    menu.popup(None, None, None, event.button, event.get_time())
+            return True
+        
+    def handle_source_filter_button_press_event(self, treeview, event):
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                id = self.source_filter_model.get_value( self.source_filter_model.get_iter(path), 0 )
+                if id>=0: #len(path)==2:
+                    menu = gtk.Menu()
+                    edit = gtk.ImageMenuItem(stock_id=gtk.STOCK_EDIT)
+                    edit.connect( 'activate', lambda x: SourceEditGUI(id) )
+                    menu.append(edit)
+                    delete = gtk.ImageMenuItem(stock_id=gtk.STOCK_DELETE)
+                    delete.connect( 'activate', lambda x: self.delete_source(id) )
+                    menu.append(delete)
+                    menu.show_all()
+                    menu.popup(None, None, None, event.button, event.get_time())
+            return True
+        
+    def handle_organization_filter_button_press_event(self, treeview, event):
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                id = self.organization_filter_model.get_value( self.organization_filter_model.get_iter(path), 0 )
+                if id>=0: #len(path)==2:
+                    menu = gtk.Menu()
+                    edit = gtk.ImageMenuItem(stock_id=gtk.STOCK_EDIT)
+                    edit.connect( 'activate', lambda x: OrganizationEditGUI(id) )
+                    menu.append(edit)
+                    delete = gtk.ImageMenuItem(stock_id=gtk.STOCK_DELETE)
+                    delete.connect( 'activate', lambda x: self.delete_organization(id) )
                     menu.append(delete)
                     menu.show_all()
                     menu.popup(None, None, None, event.button, event.get_time())
@@ -1184,16 +1266,6 @@ class MainGUI:
         playlist.save()
         self.refresh_left_pane()
 
-    def make_all_columns_resizeable_clickable_ellipsize(self, columns):
-        for column in columns:
-            column.set_resizable(True)
-            column.set_clickable(True)
-            #column.connect('clicked', self.sortRows)
-            for renderer in column.get_cell_renderers():
-                if renderer.__class__.__name__=='CellRendererText':
-                    renderer.set_property( 'ellipsize', pango.ELLIPSIZE_END )
-        
-        
     def select_middle_top_pane_item(self, selection):
         liststore, rows = selection.get_selected_rows()
         self.paper_information_pane_model.clear()
@@ -1398,6 +1470,39 @@ class MainGUI:
         if response == gtk.RESPONSE_YES:
             Playlist.objects.get(id=id).delete()
             self.refresh_left_pane()
+    
+    def delete_author(self, id):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this author?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            Author.objects.get(id=id).delete()
+            self.refresh_my_library_filter_pane()
+    
+    def delete_source(self, id):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this source?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            Source.objects.get(id=id).delete()
+            self.refresh_my_library_filter_pane()
+    
+    def delete_organization(self, id):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this organization?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            Organization.objects.get(id=id).delete()
+            self.refresh_my_library_filter_pane()
     
     def update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(self, rows):
         middle_top_pane = self.ui.get_widget('middle_top_pane')
@@ -1807,23 +1912,127 @@ class AuthorEditGUI:
         self.ui = gtk.glade.XML(RUN_FROM_DIR + 'author_edit_gui.glade')
         self.author_edit_dialog = self.ui.get_widget('author_edit_dialog')
         self.author_edit_dialog.connect("delete-event", self.author_edit_dialog.destroy )
+        self.ui.get_widget('button_connect').connect("clicked", lambda x: self.show_connect_menu() )
         self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.author_edit_dialog.destroy() )
         self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
         self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
         self.ui.get_widget('entry_name').set_text( self.author.name )
+
+        treeview_organizations = self.ui.get_widget('treeview_organizations')
+        # id, org, location
+        self.organizations_model = gtk.ListStore( int, str, str )
+        treeview_organizations.set_model( self.organizations_model )
+        treeview_organizations.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
+        renderer = gtk.CellRendererText()
+        renderer.set_property('editable', True)
+        renderer.connect( 'edited', lambda cellrenderertext, path, new_text: self.organizations_model.set_value( self.organizations_model.get_iter(path), 1, new_text ) or self.update_organization_name( self.organizations_model.get_value( self.organizations_model.get_iter(path), 0 ), new_text ) )
+        column = gtk.TreeViewColumn("Organization", renderer, text=1)
+        column.set_min_width(128)
+        column.set_expand(True)
+        column.connect('clicked', sort_model_by_column, self.organizations_model, 1)
+        treeview_organizations.append_column( column )
+        renderer = gtk.CellRendererText()
+        renderer.set_property('editable', True)
+        renderer.connect( 'edited', lambda cellrenderertext, path, new_text: self.organizations_model.set_value( self.organizations_model.get_iter(path), 2, new_text ) or self.update_organization_location( self.organizations_model.get_value( self.organizations_model.get_iter(path), 0 ), new_text ) )
+        column = gtk.TreeViewColumn("Location", renderer, text=2)
+        column.set_min_width(128)
+        column.set_expand(True)
+        column.connect('clicked', sort_model_by_column, self.organizations_model, 2)
+        treeview_organizations.append_column( column )
+        make_all_columns_resizeable_clickable_ellipsize( treeview_organizations.get_columns() )
+        treeview_organizations.connect('button-press-event', self.handle_organizations_button_press_event)
+        for organization in self.author.organizations.all():
+            self.organizations_model.append( ( organization.id, organization.name, organization.location ) )
+        
         self.author_edit_dialog.show()
         
     def delete(self):
-        self.author.delete()
-        self.author_edit_dialog.destroy()
-        main_gui.refresh_middle_pane_search()
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this author?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            self.author.delete()
+            self.author_edit_dialog.destroy()
+            main_gui.refresh_middle_pane_search()
+        
+    def update_organization_name( self, id, new_text ):
+        organziation = Organization.objects.get(id=id)
+        organziation.name = new_text.strip()
+        organziation.save()
+        
+    def update_organization_location( self, id, new_text ):
+        organziation = Organization.objects.get(id=id)
+        organziation.location = new_text.strip()
+        organziation.save()
+        
+    def handle_organizations_button_press_event(self, treeview, event):
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                id = self.organizations_model.get_value( self.organizations_model.get_iter(path), 0 )
+                if id>=0:
+                    menu = gtk.Menu()
+                    remove = gtk.ImageMenuItem(stock_id=gtk.STOCK_REMOVE)
+                    remove.connect( 'activate', lambda x: self.organizations_model.remove( self.organizations_model.get_iter(path) ) )
+                    menu.append(remove)
+                    menu_item = gtk.ImageMenuItem(stock_id=gtk.STOCK_ADD)
+                    button_submenu = gtk.Menu()
+                    org_ids = set()
+                    self.organizations_model.foreach( lambda model, path, iter: org_ids.add( model.get_value( iter, 0 ) ) )
+                    for organization in Organization.objects.all():
+                        if organization.id not in org_ids:
+                            submenu_item = gtk.MenuItem( truncate_long_str(organization.name) )
+                            submenu_item.connect( 'activate', lambda x, r: self.organizations_model.append(r), ( organization.id, organization.name, organization.location ) )
+                            button_submenu.append( submenu_item )
+                    submenu_item = gtk.MenuItem( 'New...' )
+                    new_org = Organization.objects.create()
+                    submenu_item.connect( 'activate', lambda x, new_org: new_org.save() or self.organizations_model.append( ( new_org.id, new_org.name, new_org.location ) ), new_org )
+                    button_submenu.append( submenu_item )
+                    menu_item.set_submenu(button_submenu)
+                    menu.append(menu_item)
+                    menu.show_all()
+                    menu.popup(None, None, None, event.button, event.get_time())
+            return True
         
     def save(self):
         self.author.name = self.ui.get_widget('entry_name').get_text()
         self.author.save()
+        org_ids = set()
+        self.organizations_model.foreach( lambda model, path, iter: org_ids.add( model.get_value( iter, 0 ) ) )
+        self.author.organizations = Organization.objects.in_bulk( list(org_ids) )
         self.author_edit_dialog.destroy()
         main_gui.refresh_middle_pane_search()
-        
+    
+    def connect(self, author, id):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really merge this author with "%s"?' % author.name)
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            author.merge(id)
+            self.author_edit_dialog.destroy()
+            main_gui.refresh_middle_pane_search()
+    
+    def show_connect_menu(self):
+        menu = gtk.Menu()
+        for author in Author.objects.order_by('name'):
+            if author.id!=self.author.id:
+                menu_item = gtk.MenuItem( truncate_long_str(author.name) )
+                menu_item.connect( 'activate', lambda x, author, id: self.connect( author, id ), author, self.author.id )
+                menu.append( menu_item )
+        menu.popup(None, None, None, 0, 0)
+        menu.show_all()
             
 
 class OrganizationEditGUI:
@@ -1832,6 +2041,7 @@ class OrganizationEditGUI:
         self.ui = gtk.glade.XML(RUN_FROM_DIR + 'organization_edit_gui.glade')
         self.edit_dialog = self.ui.get_widget('organization_edit_dialog')
         self.edit_dialog.connect("delete-event", self.edit_dialog.destroy )
+        self.ui.get_widget('button_connect').connect("clicked", lambda x: self.show_connect_menu() )
         self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.edit_dialog.destroy() )
         self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
         self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
@@ -1851,6 +2061,28 @@ class OrganizationEditGUI:
         self.edit_dialog.destroy()
         main_gui.refresh_middle_pane_search()
         
+    def connect(self, organization, id):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really merge this organization with "%s"?' % organization.name)
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            organization.merge(id)
+            self.edit_dialog.destroy()
+            main_gui.refresh_middle_pane_search()
+    
+    def show_connect_menu(self):
+        menu = gtk.Menu()
+        for organization in Organization.objects.order_by('name'):
+            if organization.id!=self.organization.id:
+                menu_item = gtk.MenuItem( truncate_long_str(organization.name) )
+                menu_item.connect( 'activate', lambda x, organization, id: self.connect( organization, id ), organization, self.organization.id )
+                menu.append( menu_item )
+        menu.popup(None, None, None, 0, 0)
+        menu.show_all()
+            
             
 
 class SourceEditGUI:

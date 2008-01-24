@@ -40,6 +40,16 @@ class Organization(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
+    def merge(self, id):
+        if id==self.id:
+            return
+        other_organization = Organization.objects.get(id=id)
+        for author in other_organization.author_set.all():
+            self.author_set.add( author )
+        for paper in other_organization.paper_set.all():
+            self.paper_set.add( paper )
+        other_organization.delete()
+
     class Admin:
         list_display = ( 'id', 'name', 'location' )
 
@@ -55,6 +65,19 @@ class Author(models.Model):
     department = models.CharField(max_length='1024', blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
+    
+    def merge(self, id):
+        if id==self.id:
+            return
+        other_author = Author.objects.get(id=id)
+        for organization in other_author.organizations.all():
+            self.organizations.add( organization )
+        from django.db import connection
+        cursor = connection.cursor()
+        # we want to preserve the order of the authors, so do an update via SQL instead of using the built in set manipulators
+        # FIXME: this will fail if you merge two authors of the same paper
+        cursor.execute("update gPapers_paper_authors set author_id=%s where author_id=%s;", [self.id, id])
+        other_author.delete()
 
     class Admin:
         list_display = ( 'id', 'name', 'location' )
