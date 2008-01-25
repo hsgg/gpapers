@@ -450,7 +450,7 @@ def import_acm_citation(params):
             td1, td2 = node.findAll('td')
             org_and_location = td2.find('small')
             if org_and_location:
-                if org_and_location.string.find(',')>-1:
+                if org_and_location.string and org_and_location.string.find(',')>-1:
                     organization_name = html_strip( org_and_location.string[0:org_and_location.string.index(',')] )
                     location = html_strip( org_and_location.string[org_and_location.string.index(',')+1:] )
                 else:
