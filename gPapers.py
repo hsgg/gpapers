@@ -962,7 +962,7 @@ class MainGUI:
         self.middle_top_pane_model.clear()
 
         button = gtk.ToolButton(gtk.STOCK_ADD)
-        button.set_tooltip_markup('Create a new document collection...')
+        button.set_tooltip(gtk.Tooltips(), 'Create a new document collection...')
         button.connect( 'clicked', lambda x: self.create_playlist() )
         button.show()
         left_pane_toolbar.insert( button, -1 )
@@ -970,7 +970,7 @@ class MainGUI:
         try:
             self.current_playlist = Playlist.objects.get(id=liststore[rows[0]][2])
             button = gtk.ToolButton(gtk.STOCK_REMOVE)
-            button.set_tooltip_markup('Delete this collection...')
+            button.set_tooltip(gtk.Tooltips(), 'Delete this collection...')
             button.connect( 'clicked', lambda x: self.delete_playlist(self.current_playlist.id) )
             button.show()
             left_pane_toolbar.insert( button, -1 )
@@ -1300,7 +1300,7 @@ class MainGUI:
             if paper and os.path.isfile( paper.get_full_text_filename() ):
                 status.append( 'Full text saved in local library.' )
                 button = gtk.ToolButton(gtk.STOCK_OPEN)
-                button.set_tooltip_markup('Open the full text of this paper in a new window...')
+                button.set_tooltip(gtk.Tooltips(), 'Open the full text of this paper in a new window...')
                 button.connect( 'clicked', lambda x: desktop.open( paper.get_full_text_filename() ) )
                 paper_information_toolbar.insert( button, -1 )
             if status:
@@ -1318,12 +1318,12 @@ class MainGUI:
             if liststore[rows[0]][8]:
                 if paper:
                     button = gtk.ToolButton(gtk.STOCK_REFRESH)
-                    button.set_tooltip_markup('Re-add this paper to your library...')
+                    button.set_tooltip(gtk.Tooltips(), 'Re-add this paper to your library...')
                     button.connect( 'clicked', lambda x: fetch_citation_via_url(liststore[rows[0]][8]) )
                     paper_information_toolbar.insert( button, -1 )
                 else:
                     button = gtk.ToolButton(gtk.STOCK_ADD)
-                    button.set_tooltip_markup('Add this paper to your library...')
+                    button.set_tooltip(gtk.Tooltips(), 'Add this paper to your library...')
                     button.connect( 'clicked', lambda x: fetch_citation_via_url(liststore[rows[0]][8]) )
                     paper_information_toolbar.insert( button, -1 )
                     
@@ -1352,19 +1352,19 @@ class MainGUI:
                 self.update_paper_notes_handler_id = paper_notes.get_buffer().connect('changed', self.update_paper_notes, paper.id )
 
                 button = gtk.ToolButton(gtk.STOCK_EDIT)
-                button.set_tooltip_markup('Edit this paper...')
+                button.set_tooltip(gtk.Tooltips(), 'Edit this paper...')
                 button.connect( 'clicked', lambda x: PaperEditGUI(paper.id) )
                 paper_information_toolbar.insert( button, -1 )
 
                 if self.current_playlist:
                     button = gtk.ToolButton(gtk.STOCK_REMOVE)
-                    button.set_tooltip_markup('Remove this paper from this collection...')
+                    button.set_tooltip(gtk.Tooltips(), 'Remove this paper from this collection...')
                     button.connect( 'clicked', lambda x: self.remove_papers_from_current_playlist([paper.id]) )
                     paper_information_toolbar.insert( button, -1 )
 
                 if importable_references or importable_citations:
                     import_button = gtk.MenuToolButton(gtk.STOCK_ADD)
-                    import_button.set_tooltip_markup('Import all cited and referenced documents...(%i)' % len(importable_references.union(importable_citations)) )
+                    import_button.set_tooltip(gtk.Tooltips(), 'Import all cited and referenced documents...(%i)' % len(importable_references.union(importable_citations)) )
                     import_button.connect( 'clicked', lambda x: fetch_citations_via_references( importable_references.union(importable_citations) ) )
                     paper_information_toolbar.insert( import_button, -1 )
                     import_button_menu = gtk.Menu()
@@ -1405,7 +1405,7 @@ class MainGUI:
             if len(downloadable_paper_urls):
                 self.paper_information_pane_model.append(( '<b>Number of new papers:</b>', len(downloadable_paper_urls) ,))
                 button = gtk.ToolButton(gtk.STOCK_ADD)
-                button.set_tooltip_markup( 'Add new papers (%i) to your library...' % len(downloadable_paper_urls) )
+                button.set_tooltip(gtk.Tooltips(),  'Add new papers (%i) to your library...' % len(downloadable_paper_urls) )
                 button.connect( 'clicked', lambda x: fetch_citations_via_urls(downloadable_paper_urls) )
                 paper_information_toolbar.insert( button, -1 )
 
@@ -1416,11 +1416,11 @@ class MainGUI:
             print 'selected_valid_paper_ids', selected_valid_paper_ids
             if len(selected_valid_paper_ids):
                 button = gtk.ToolButton(gtk.STOCK_REMOVE)
-                button.set_tooltip_markup('Remove these papers from your library...')
+                button.set_tooltip(gtk.Tooltips(), 'Remove these papers from your library...')
                 button.connect( 'clicked', lambda x: self.delete_papers( selected_valid_paper_ids ) )
                 paper_information_toolbar.insert( button, -1 )
                 button = gtk.ToolButton(gtk.STOCK_DND_MULTIPLE)
-                button.set_tooltip_markup('Create a new collection from these documents...')
+                button.set_tooltip(gtk.Tooltips(), 'Create a new collection from these documents...')
                 button.connect( 'clicked', lambda x: self.create_playlist( selected_valid_paper_ids ) )
                 paper_information_toolbar.insert( button, -1 )
 
