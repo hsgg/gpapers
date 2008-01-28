@@ -155,16 +155,22 @@ def get_md5_hexdigest_from_data(data):
     m.update(data)
     return m.hexdigest()
 
-def set_model_from_list(cb, items, index=None):
-    """Setup a ComboBox or ComboBoxEntry based on a list of strings, or a list of tuples with the index param."""           
-    model = gtk.ListStore(str)
+def set_model_from_list(cb, items):
+    """Setup a ComboBox or ComboBoxEntry based on a list of (int,str)s."""           
+    model = gtk.ListStore(int, str)
     for i in items:
-        if index==None:
-            model.append((i,))
-        else:
-            model.append((i[index],))
+        model.append(i)
     cb.set_model(model)
+    cell = gtk.CellRendererText()
+    cb.pack_start(cell, True)
+    cb.add_attribute(cell, 'text', 1)
 
+def index_of_in_list_of_lists(value, list, column, not_found=-1):
+    for i in range(0,len(list)):
+        if value==list[i][column]:
+            return i
+    return not_found
+  
 def make_all_columns_resizeable_clickable_ellipsize(columns):
     for column in columns:
         column.set_resizable(True)
@@ -1081,10 +1087,7 @@ class MainGUI:
         paper_id = treeview.get_model().get_value( treeview.get_model().get_iter(path), 0 )
         try:
             paper = Paper.objects.get(id=paper_id)
-            if paper.full_text:
-                desktop.open( paper.get_full_text_filename() )
-                paper.read_count = paper.read_count + 1
-                paper.save()
+            paper.open()
         except:
             traceback.print_exc()
     
@@ -1144,7 +1147,7 @@ class MainGUI:
                     paper = Paper.objects.get(id=paper_id)
                     if paper and os.path.isfile( paper.get_full_text_filename() ):
                         button = gtk.ImageMenuItem(gtk.STOCK_OPEN)
-                        button.connect( 'activate', lambda x: desktop.open( paper.get_full_text_filename() ) )
+                        button.connect( 'activate', lambda x: paper.open() )
                         menu.append(button)
                         button = gtk.ImageMenuItem(gtk.STOCK_EDIT)
                         button.connect( 'activate', lambda x: PaperEditGUI(paper.id) )
@@ -1327,7 +1330,7 @@ class MainGUI:
                 status.append( 'Full text saved in local library.' )
                 button = gtk.ToolButton(gtk.STOCK_OPEN)
                 button.set_tooltip(gtk.Tooltips(), 'Open the full text of this paper in a new window...')
-                button.connect( 'clicked', lambda x: desktop.open( paper.get_full_text_filename() ) )
+                button.connect( 'clicked', lambda x: paper.open() )
                 paper_information_toolbar.insert( button, -1 )
             if status:
                 self.paper_information_pane_model.append(( '<b>Status:</b>', '\n'.join(status) ,))
@@ -2172,6 +2175,119 @@ class SourceEditGUI:
         
             
 
+class ReferenceEditGUI:
+    def __init__(self, id):
+        self.reference = Reference.objects.get(id=id)
+        self.ui = gtk.glade.XML(RUN_FROM_DIR + 'reference_edit_gui.glade')
+        self.edit_dialog = self.ui.get_widget('reference_edit_dialog')
+        self.edit_dialog.connect("delete-event", self.edit_dialog.destroy )
+        self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.edit_dialog.destroy() )
+        self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
+        self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
+        self.ui.get_widget('entry_line_from_referencing_paper').set_text( self.reference.line_from_referencing_paper )
+        self.ui.get_widget('entry_doi_from_referencing_paper').set_text( self.reference.doi_from_referencing_paper )
+        self.ui.get_widget('entry_url_from_referencing_paper').set_text( self.reference.url_from_referencing_paper )
+        
+        combobox_referencing_paper = self.ui.get_widget('combobox_referencing_paper')
+        combobox_referenced_paper = self.ui.get_widget('combobox_referenced_paper')
+        papers = [ ( paper.id, truncate_long_str(paper.pretty_string()) ) for paper in Paper.objects.order_by('title') ]
+        papers.insert(0, ( -1, '(not in local library)' ))
+        set_model_from_list( combobox_referencing_paper, papers )
+        if self.reference.referencing_paper:
+            combobox_referencing_paper.set_active( index_of_in_list_of_lists(value=self.reference.referencing_paper.id, list=papers, column=0, not_found=-1) )
+        else:
+            combobox_referencing_paper.set_active(0)
+        set_model_from_list( combobox_referenced_paper, papers )
+        if self.reference.referenced_paper:
+            combobox_referenced_paper.set_active( index_of_in_list_of_lists(value=self.reference.referenced_paper.id, list=papers, column=0, not_found=-1) )
+        else:
+            combobox_referenced_paper.set_active(0)
+        
+        self.edit_dialog.show()
+        
+    def delete(self):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this reference?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            self.reference.delete()
+            self.edit_dialog.destroy()
+        
+    def save(self):
+        self.reference.line_from_referencing_paper = self.ui.get_widget('entry_line_from_referencing_paper').get_text()
+        self.reference.doi_from_referencing_paper = self.ui.get_widget('entry_doi_from_referencing_paper').get_text()
+        self.reference.url_from_referencing_paper = self.ui.get_widget('entry_url_from_referencing_paper').get_text()
+        print "self.ui.get_widget('combobox_referencing_paper').get_active()", self.ui.get_widget('combobox_referencing_paper').get_active()
+        referencing_paper_id = self.ui.get_widget('combobox_referencing_paper').get_model()[ self.ui.get_widget('combobox_referencing_paper').get_active() ][0]
+        try: self.reference.referencing_paper = Paper.objects.get(id=referencing_paper_id)
+        except: self.reference.referencing_paper = None
+        referenced_paper_id = self.ui.get_widget('combobox_referenced_paper').get_model()[ self.ui.get_widget('combobox_referenced_paper').get_active() ][0]
+        try: self.reference.referenced_paper = Paper.objects.get(id=referenced_paper_id)
+        except: self.reference.referenced_paper = None
+        self.reference.save()
+        self.edit_dialog.destroy()
+        
+            
+
+class CitationEditGUI:
+    def __init__(self, id):
+        self.reference = Reference.objects.get(id=id)
+        self.ui = gtk.glade.XML(RUN_FROM_DIR + 'citation_edit_gui.glade')
+        self.edit_dialog = self.ui.get_widget('citation_edit_dialog')
+        self.edit_dialog.connect("delete-event", self.edit_dialog.destroy )
+        self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.edit_dialog.destroy() )
+        self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
+        self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
+        self.ui.get_widget('entry_line_from_referenced_paper').set_text( self.reference.line_from_referenced_paper )
+        self.ui.get_widget('entry_doi_from_referenced_paper').set_text( self.reference.doi_from_referenced_paper )
+        self.ui.get_widget('entry_url_from_referenced_paper').set_text( self.reference.url_from_referenced_paper )
+        
+        combobox_referencing_paper = self.ui.get_widget('combobox_referencing_paper')
+        combobox_referenced_paper = self.ui.get_widget('combobox_referenced_paper')
+        papers = [ ( paper.id, truncate_long_str(paper.pretty_string()) ) for paper in Paper.objects.order_by('title') ]
+        papers.insert(0, ( -1, '(not in local library)' ))
+        set_model_from_list( combobox_referencing_paper, papers )
+        if self.reference.referencing_paper:
+            combobox_referencing_paper.set_active( index_of_in_list_of_lists(value=self.reference.referencing_paper.id, list=papers, column=0, not_found=-1) )
+        else:
+            combobox_referencing_paper.set_active(0)
+        set_model_from_list( combobox_referenced_paper, papers )
+        if self.reference.referenced_paper:
+            combobox_referenced_paper.set_active( index_of_in_list_of_lists(value=self.reference.referenced_paper.id, list=papers, column=0, not_found=-1) )
+        else:
+            combobox_referenced_paper.set_active(0)
+        
+        self.edit_dialog.show()
+        
+    def delete(self):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this reference?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            self.reference.delete()
+            self.edit_dialog.destroy()
+        
+    def save(self):
+        self.reference.line_from_referenced_paper = self.ui.get_widget('entry_line_from_referenced_paper').get_text()
+        self.reference.doi_from_referenced_paper = self.ui.get_widget('entry_doi_from_referenced_paper').get_text()
+        self.reference.url_from_referenced_paper = self.ui.get_widget('entry_url_from_referenced_paper').get_text()
+        referencing_paper_id = self.ui.get_widget('combobox_referencing_paper').get_model()[ self.ui.get_widget('combobox_referencing_paper').get_active() ][0]
+        try: self.reference.referencing_paper = Paper.objects.get(id=referencing_paper_id)
+        except: self.reference.referencing_paper = None
+        referenced_paper_id = self.ui.get_widget('combobox_referenced_paper').get_model()[ self.ui.get_widget('combobox_referenced_paper').get_active() ][0]
+        try: self.reference.referenced_paper = Paper.objects.get(id=referenced_paper_id)
+        except: self.reference.referenced_paper = None
+        self.reference.save()
+        self.edit_dialog.destroy()
+        
+            
+
 class PaperEditGUI:
     def __init__(self, id):
         self.paper = Paper.objects.get(id=id)
@@ -2231,7 +2347,7 @@ class PaperEditGUI:
         column.set_expand(True)
         treeview_references.append_column( column )
         #make_all_columns_resizeable_clickable_ellipsize( treeview_references.get_columns() )
-        #treeview_references.connect('button-press-event', self.handle_references_button_press_event)
+        treeview_references.connect('button-press-event', self.handle_references_button_press_event)
         references = self.paper.reference_set.order_by('id')
         for i in range(0,len(references)):
             if references[i].referenced_paper and os.path.isfile( references[i].referenced_paper.get_full_text_filename() ):
@@ -2252,7 +2368,7 @@ class PaperEditGUI:
         self.citations_model = gtk.ListStore( int, str, str, gtk.gdk.Pixbuf )
         treeview_citations.set_model( self.citations_model )
         treeview_citations.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
-        treeview_citations.append_column( gtk.TreeViewColumn("", gtk.CellRendererText(), markup=2) )
+        #treeview_citations.append_column( gtk.TreeViewColumn("", gtk.CellRendererText(), markup=2) )
         column = gtk.TreeViewColumn()
         renderer = gtk.CellRendererPixbuf()
         column.pack_start(renderer, expand=False)
@@ -2263,7 +2379,7 @@ class PaperEditGUI:
         column.set_expand(True)
         treeview_citations.append_column( column )
         #make_all_columns_resizeable_clickable_ellipsize( treeview_citations.get_columns() )
-        #treeview_citations.connect('button-press-event', self.handle_references_button_press_event)
+        treeview_citations.connect('button-press-event', self.handle_citations_button_press_event)
         references = self.paper.citation_set.order_by('id')
         for i in range(0,len(references)):
             if references[i].referencing_paper and os.path.isfile( references[i].referencing_paper.get_full_text_filename() ):
@@ -2333,6 +2449,56 @@ class PaperEditGUI:
                     menu.append(remove)
                     menu_item = gtk.ImageMenuItem(stock_id=gtk.STOCK_ADD)
                     menu_item.set_submenu(self.get_new_authors_menu())
+                    menu.append(menu_item)
+                    menu.show_all()
+                    menu.popup(None, None, None, event.button, event.get_time())
+            return True
+
+    def handle_references_button_press_event(self, treeview, event):
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                id = self.references_model.get_value( self.references_model.get_iter(path), 0 )
+                if id>=0:
+                    reference = Reference.objects.get(id=id)
+                    menu = gtk.Menu()
+                    if reference.referenced_paper and os.path.isfile( reference.referenced_paper.get_full_text_filename() ):
+                        menu_item = gtk.ImageMenuItem(stock_id=gtk.STOCK_OPEN)
+                        menu_item.connect( 'activate', lambda x: reference.referenced_paper.open() )
+                        menu.append(menu_item)
+                    menu_item = gtk.ImageMenuItem(stock_id=gtk.STOCK_EDIT)
+                    menu_item.connect( 'activate', lambda x: ReferenceEditGUI(reference.id) )
+                    menu.append(menu_item)
+                    menu.show_all()
+                    menu.popup(None, None, None, event.button, event.get_time())
+            return True
+
+    def handle_citations_button_press_event(self, treeview, event):
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                id = self.citations_model.get_value( self.citations_model.get_iter(path), 0 )
+                if id>=0:
+                    reference = Reference.objects.get(id=id)
+                    menu = gtk.Menu()
+                    if reference.referencing_paper and os.path.isfile( reference.referencing_paper.get_full_text_filename() ):
+                        menu_item = gtk.ImageMenuItem(stock_id=gtk.STOCK_OPEN)
+                        menu_item.connect( 'activate', lambda x: reference.referenced_paper.open() )
+                        menu.append(menu_item)
+                    menu_item = gtk.ImageMenuItem(stock_id=gtk.STOCK_EDIT)
+                    menu_item.connect( 'activate', lambda x: CitationEditGUI(reference.id) )
                     menu.append(menu_item)
                     menu.show_all()
                     menu.popup(None, None, None, event.button, event.get_time())

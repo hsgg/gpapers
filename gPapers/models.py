@@ -1,5 +1,6 @@
 import md5, os
 from django.db import models
+import desktop
 
 
 class Publisher(models.Model):
@@ -134,12 +135,21 @@ class Paper(models.Model):
         for row in rows:
             author_list.append( Author.objects.get(id=row[0]) )
         return author_list
+    
+    def open(self):
+        if os.path.isfile( self.get_full_text_filename() ):
+            desktop.open( self.get_full_text_filename() )
+            self.read_count = self.read_count + 1
+            self.save()
 
     class Admin:
         list_display = ( 'id', 'doi', 'title' )
 
     def __unicode__(self):
         return 'Paper<%i: %s>' % ( self.id, ' '.join( [str(self.doi), str(self.title), str(self.authors.all())] ) )
+    
+    def pretty_string(self):
+        return '['+ ', '.join( [ author.name for author in self.get_authors_in_order() ] )  +'] '+ self.title
 
 
 class Reference(models.Model):
