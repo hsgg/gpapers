@@ -1355,7 +1355,7 @@ class MainGUI:
                     
             if paper:
                 importable_references = set()
-                references = paper.reference_set.all()
+                references = paper.reference_set.order_by('id')
 #                self.paper_information_pane_model.append(( '<b>References:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ references[i].line_from_referencing_paper for i in range(0,len(references)) ] ) ,))
                 for i in range(0,len(references)):
                     if i==0: col1 = '<b>References:</b>'
@@ -2198,8 +2198,6 @@ class PaperEditGUI:
         column = gtk.TreeViewColumn("Author", renderer, text=1)
         column.set_expand(True)
         treeview_authors.append_column( column )
-        column.set_expand(True)
-        treeview_authors.append_column( column )
         make_all_columns_resizeable_clickable_ellipsize( treeview_authors.get_columns() )
         treeview_authors.connect('button-press-event', self.handle_authors_button_press_event)
         for author in self.paper.get_authors_in_order():
@@ -2211,8 +2209,75 @@ class PaperEditGUI:
         button.show()
         self.ui.get_widget('toolbar_authors').insert( button, -1 )
 
+        self.init_references_tab()
+        self.init_citations_tab()
+
         self.edit_dialog.show()
         
+    def init_references_tab(self):
+        treeview_references = self.ui.get_widget('treeview_references')
+        # id, line, number, pix_buf
+        self.references_model = gtk.ListStore( int, str, str, gtk.gdk.Pixbuf )
+        treeview_references.set_model( self.references_model )
+        treeview_references.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
+        treeview_references.append_column( gtk.TreeViewColumn("", gtk.CellRendererText(), markup=2) )
+        column = gtk.TreeViewColumn()
+        renderer = gtk.CellRendererPixbuf()
+        column.pack_start(renderer, expand=False)
+        column.add_attribute(renderer, 'pixbuf', 3)
+        renderer = gtk.CellRendererText()
+        column.pack_start(renderer, expand=True)
+        column.add_attribute(renderer, 'markup', 1)        
+        column.set_expand(True)
+        treeview_references.append_column( column )
+        #make_all_columns_resizeable_clickable_ellipsize( treeview_references.get_columns() )
+        #treeview_references.connect('button-press-event', self.handle_references_button_press_event)
+        references = self.paper.reference_set.order_by('id')
+        for i in range(0,len(references)):
+            if references[i].referenced_paper and os.path.isfile( references[i].referenced_paper.get_full_text_filename() ):
+                icon = treeview_references.render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
+            else:
+                icon = None
+            self.references_model.append( ( references[i].id, references[i].line_from_referencing_paper , '<i>'+ str(i+1) +':</i>', icon ) )
+
+        button = gtk.ToolButton(gtk.STOCK_ADD)
+        button.set_tooltip(gtk.Tooltips(), 'Add a reference...')
+        button.connect( 'clicked', lambda x: self.get_new_authors_menu().popup(None, None, None, 0, 0) )
+        button.show()
+        #self.ui.get_widget('toolbar_references').insert( button, -1 )
+        
+    def init_citations_tab(self):
+        treeview_citations = self.ui.get_widget('treeview_citations')
+        # id, line, number, pix_buf
+        self.citations_model = gtk.ListStore( int, str, str, gtk.gdk.Pixbuf )
+        treeview_citations.set_model( self.citations_model )
+        treeview_citations.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
+        treeview_citations.append_column( gtk.TreeViewColumn("", gtk.CellRendererText(), markup=2) )
+        column = gtk.TreeViewColumn()
+        renderer = gtk.CellRendererPixbuf()
+        column.pack_start(renderer, expand=False)
+        column.add_attribute(renderer, 'pixbuf', 3)
+        renderer = gtk.CellRendererText()
+        column.pack_start(renderer, expand=True)
+        column.add_attribute(renderer, 'markup', 1)        
+        column.set_expand(True)
+        treeview_citations.append_column( column )
+        #make_all_columns_resizeable_clickable_ellipsize( treeview_citations.get_columns() )
+        #treeview_citations.connect('button-press-event', self.handle_references_button_press_event)
+        references = self.paper.citation_set.order_by('id')
+        for i in range(0,len(references)):
+            if references[i].referencing_paper and os.path.isfile( references[i].referencing_paper.get_full_text_filename() ):
+                icon = treeview_citations.render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
+            else:
+                icon = None
+            self.citations_model.append( ( references[i].id, references[i].line_from_referenced_paper , '<i>'+ str(i+1) +':</i>', icon ) )
+
+        button = gtk.ToolButton(gtk.STOCK_ADD)
+        button.set_tooltip(gtk.Tooltips(), 'Add a reference...')
+        button.connect( 'clicked', lambda x: self.get_new_authors_menu().popup(None, None, None, 0, 0) )
+        button.show()
+        #self.ui.get_widget('toolbar_references').insert( button, -1 )
+    
     def delete(self):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
         dialog.set_markup('Really delete this paper?')
