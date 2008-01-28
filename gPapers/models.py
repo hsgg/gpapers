@@ -125,6 +125,16 @@ class Paper(models.Model):
         self.full_text_md5 = m.hexdigest()
         super(Paper, self)._save_FIELD_file(field, filename, raw_contents, save)
 
+    def get_authors_in_order(self):
+        from django.db import connection
+        cursor = connection.cursor()
+        cursor.execute("select author_id from gPapers_paper_authors where paper_id=%s order by id;", [self.id])
+        rows = cursor.fetchall()
+        author_list = []
+        for row in rows:
+            author_list.append( Author.objects.get(id=row[0]) )
+        return author_list
+
     class Admin:
         list_display = ( 'id', 'doi', 'title' )
 

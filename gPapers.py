@@ -1020,6 +1020,7 @@ class MainGUI:
         self.middle_top_pane_model = gtk.ListStore( int, str, str, str, str, int, str, gtk.gdk.Pixbuf, str, str, str, str, str )
         middle_top_pane.set_model( self.middle_top_pane_model )
         middle_top_pane.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
+        middle_top_pane.connect('button-press-event', self.handle_middle_top_pane_button_press_event)
         
         #middle_top_pane.append_column( gtk.TreeViewColumn("", gtk.CellRendererToggle(), active=7) )
         #column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=2)
@@ -1123,6 +1124,31 @@ class MainGUI:
                     delete = gtk.ImageMenuItem(stock_id=gtk.STOCK_DELETE)
                     delete.connect( 'activate', lambda x: self.delete_playlist(playlist_id) )
                     menu.append(delete)
+                    menu.show_all()
+                    menu.popup(None, None, None, event.button, event.get_time())
+            return True
+        
+    def handle_middle_top_pane_button_press_event(self, treeview, event):
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                paper_id = self.middle_top_pane_model.get_value( self.middle_top_pane_model.get_iter(path), 0 )
+                if paper_id>=0: #len(path)==2:
+                    menu = gtk.Menu()
+                    paper = Paper.objects.get(id=paper_id)
+                    if paper and os.path.isfile( paper.get_full_text_filename() ):
+                        button = gtk.ImageMenuItem(gtk.STOCK_OPEN)
+                        button.connect( 'activate', lambda x: desktop.open( paper.get_full_text_filename() ) )
+                        menu.append(button)
+                        button = gtk.ImageMenuItem(gtk.STOCK_EDIT)
+                        button.connect( 'activate', lambda x: PaperEditGUI(paper.id) )
+                        menu.append(button)
                     menu.show_all()
                     menu.popup(None, None, None, event.button, event.get_time())
             return True
@@ -1907,8 +1933,12 @@ class MainGUI:
 
 
 class AuthorEditGUI:
-    def __init__(self, author_id):
-        self.author = Author.objects.get(id=author_id)
+    def __init__(self, author_id, callback_on_save=None):
+        self.callback_on_save = callback_on_save
+        if author_id==-1:
+            self.author = Author.objects.create()
+        else:
+            self.author = Author.objects.get(id=author_id)
         self.ui = gtk.glade.XML(RUN_FROM_DIR + 'author_edit_gui.glade')
         self.author_edit_dialog = self.ui.get_widget('author_edit_dialog')
         self.author_edit_dialog.connect("delete-event", self.author_edit_dialog.destroy )
@@ -1917,6 +1947,7 @@ class AuthorEditGUI:
         self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
         self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
         self.ui.get_widget('entry_name').set_text( self.author.name )
+        self.ui.get_widget('label_paper_count').set_text( str( self.author.paper_set.count() ) )
 
         treeview_organizations = self.ui.get_widget('treeview_organizations')
         # id, org, location
@@ -1943,6 +1974,12 @@ class AuthorEditGUI:
         treeview_organizations.connect('button-press-event', self.handle_organizations_button_press_event)
         for organization in self.author.organizations.all():
             self.organizations_model.append( ( organization.id, organization.name, organization.location ) )
+        
+        button = gtk.ToolButton(gtk.STOCK_ADD)
+        button.set_tooltip(gtk.Tooltips(), 'Add an organization...')
+        button.connect( 'clicked', lambda x: self.get_new_organizations_menu().popup(None, None, None, 0, 0) )
+        button.show()
+        self.ui.get_widget('toolbar_organizations').insert( button, -1 )
         
         self.author_edit_dialog.show()
         
@@ -1985,23 +2022,28 @@ class AuthorEditGUI:
                     remove.connect( 'activate', lambda x: self.organizations_model.remove( self.organizations_model.get_iter(path) ) )
                     menu.append(remove)
                     menu_item = gtk.ImageMenuItem(stock_id=gtk.STOCK_ADD)
-                    button_submenu = gtk.Menu()
-                    org_ids = set()
-                    self.organizations_model.foreach( lambda model, path, iter: org_ids.add( model.get_value( iter, 0 ) ) )
-                    for organization in Organization.objects.all():
-                        if organization.id not in org_ids:
-                            submenu_item = gtk.MenuItem( truncate_long_str(organization.name) )
-                            submenu_item.connect( 'activate', lambda x, r: self.organizations_model.append(r), ( organization.id, organization.name, organization.location ) )
-                            button_submenu.append( submenu_item )
-                    submenu_item = gtk.MenuItem( 'New...' )
-                    new_org = Organization.objects.create()
-                    submenu_item.connect( 'activate', lambda x, new_org: new_org.save() or self.organizations_model.append( ( new_org.id, new_org.name, new_org.location ) ), new_org )
-                    button_submenu.append( submenu_item )
-                    menu_item.set_submenu(button_submenu)
+                    menu_item.set_submenu( self.get_new_organizations_menu() )
                     menu.append(menu_item)
                     menu.show_all()
                     menu.popup(None, None, None, event.button, event.get_time())
             return True
+        
+    def get_new_organizations_menu(self):
+        button_submenu = gtk.Menu()
+        org_ids = set()
+        self.organizations_model.foreach( lambda model, path, iter: org_ids.add( model.get_value( iter, 0 ) ) )
+        for organization in Organization.objects.order_by('name'):
+            if organization.id not in org_ids and len(organization.name):
+                submenu_item = gtk.MenuItem( truncate_long_str(organization.name) )
+                submenu_item.connect( 'activate', lambda x, r: self.organizations_model.append(r), ( organization.id, organization.name, organization.location ) )
+                button_submenu.append( submenu_item )
+        submenu_item = gtk.MenuItem( 'New...' )
+        new_org = Organization.objects.create()
+        submenu_item.connect( 'activate', lambda x, new_org: new_org.save() or self.organizations_model.append( ( new_org.id, new_org.name, new_org.location ) ), new_org )
+        button_submenu.append( submenu_item )
+        button_submenu.show_all()
+        return button_submenu
+        
         
     def save(self):
         self.author.name = self.ui.get_widget('entry_name').get_text()
@@ -2010,6 +2052,8 @@ class AuthorEditGUI:
         self.organizations_model.foreach( lambda model, path, iter: org_ids.add( model.get_value( iter, 0 ) ) )
         self.author.organizations = Organization.objects.in_bulk( list(org_ids) )
         self.author_edit_dialog.destroy()
+        if self.callback_on_save:
+            self.callback_on_save(self.author)
         main_gui.refresh_middle_pane_search()
     
     def connect(self, author, id):
@@ -2050,9 +2094,16 @@ class OrganizationEditGUI:
         self.edit_dialog.show()
         
     def delete(self):
-        self.organization.delete()
-        self.edit_dialog.destroy()
-        main_gui.refresh_middle_pane_search()
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this organization?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            self.organization.delete()
+            self.edit_dialog.destroy()
+            main_gui.refresh_middle_pane_search()
         
     def save(self):
         self.organization.name = self.ui.get_widget('entry_name').get_text()
@@ -2100,9 +2151,16 @@ class SourceEditGUI:
         self.edit_dialog.show()
         
     def delete(self):
-        self.source.delete()
-        self.edit_dialog.destroy()
-        main_gui.refresh_middle_pane_search()
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this source?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            self.source.delete()
+            self.edit_dialog.destroy()
+            main_gui.refresh_middle_pane_search()
         
     def save(self):
         self.source.name = self.ui.get_widget('entry_name').get_text()
@@ -2130,12 +2188,42 @@ class PaperEditGUI:
         self.ui.get_widget('filechooserbutton').set_filename( self.paper.get_full_text_filename() )
         self.ui.get_widget('spinbutton_rating').set_value( self.paper.rating )
         self.ui.get_widget('spinbutton_read_count').set_value( self.paper.read_count )
+
+        treeview_authors = self.ui.get_widget('treeview_authors')
+        # id, name
+        self.authors_model = gtk.ListStore( int, str )
+        treeview_authors.set_model( self.authors_model )
+        treeview_authors.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
+        renderer = gtk.CellRendererText()
+        column = gtk.TreeViewColumn("Author", renderer, text=1)
+        column.set_expand(True)
+        treeview_authors.append_column( column )
+        column.set_expand(True)
+        treeview_authors.append_column( column )
+        make_all_columns_resizeable_clickable_ellipsize( treeview_authors.get_columns() )
+        treeview_authors.connect('button-press-event', self.handle_authors_button_press_event)
+        for author in self.paper.get_authors_in_order():
+            self.authors_model.append( ( author.id, author.name ) )
+
+        button = gtk.ToolButton(gtk.STOCK_ADD)
+        button.set_tooltip(gtk.Tooltips(), 'Add an author...')
+        button.connect( 'clicked', lambda x: self.get_new_authors_menu().popup(None, None, None, 0, 0) )
+        button.show()
+        self.ui.get_widget('toolbar_authors').insert( button, -1 )
+
         self.edit_dialog.show()
         
     def delete(self):
-        self.paper.delete()
-        self.edit_dialog.destroy()
-        main_gui.refresh_middle_pane_search()
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this paper?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            self.paper.delete()
+            self.edit_dialog.destroy()
+            main_gui.refresh_middle_pane_search()
         
     def save(self):
         self.paper.title = self.ui.get_widget('entry_title').get_text()
@@ -2154,9 +2242,54 @@ class PaperEditGUI:
                 ext = 'unknown'
             full_text_filename = defaultfilters.slugify(self.paper.doi) +'_'+ defaultfilters.slugify(self.paper.title) +'.'+ defaultfilters.slugify(ext)
             self.paper.save_full_text_file( full_text_filename, open(new_file_name,'r').read() )
+
+        self.paper.authors.clear()
+        self.authors_model.foreach( lambda model, path, iter: self.paper.authors.add( Author.objects.get(id=model.get_value( iter, 0 )) ) )
+        
         self.paper.save()
         self.edit_dialog.destroy()
         main_gui.refresh_middle_pane_search()
+        
+    def handle_authors_button_press_event(self, treeview, event):
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                id = self.authors_model.get_value( self.authors_model.get_iter(path), 0 )
+                if id>=0:
+                    menu = gtk.Menu()
+                    remove = gtk.ImageMenuItem(stock_id=gtk.STOCK_REMOVE)
+                    remove.connect( 'activate', lambda x: self.authors_model.remove( self.authors_model.get_iter(path) ) )
+                    menu.append(remove)
+                    menu_item = gtk.ImageMenuItem(stock_id=gtk.STOCK_ADD)
+                    menu_item.set_submenu(self.get_new_authors_menu())
+                    menu.append(menu_item)
+                    menu.show_all()
+                    menu.popup(None, None, None, event.button, event.get_time())
+            return True
+
+    def get_new_authors_menu(self):
+        button_submenu = gtk.Menu()
+        author_ids = set()
+        self.authors_model.foreach( lambda model, path, iter: author_ids.add( model.get_value( iter, 0 ) ) )
+        for author in Author.objects.order_by('name'):
+            if author.id not in author_ids and len(author.name):
+                submenu_item = gtk.MenuItem( truncate_long_str(author.name) )
+                submenu_item.connect( 'activate', lambda x, r: self.authors_model.append(r), ( author.id, author.name ) )
+                button_submenu.append( submenu_item )
+        submenu_item = gtk.MenuItem( 'New...' )
+        submenu_item.connect( 'activate', lambda x: AuthorEditGUI(-1, callback_on_save=self.add_new_author) )
+        button_submenu.append( submenu_item )
+        button_submenu.show_all()
+        return button_submenu
+        
+    def add_new_author(self, new_author):
+        self.authors_model.append( ( new_author.id, new_author.name ) )
         
         
 class PreferencesGUI:
