@@ -706,7 +706,8 @@ class MainGUI:
         self.init_middle_top_pane()
         self.init_paper_information_pane()
         self.refresh_left_pane()  
-        self.init_busy_notifier()      
+        self.init_busy_notifier()   
+        self.init_bookmark_pane()   
         main_window.show()
         
     def init_busy_notifier(self):
@@ -891,6 +892,23 @@ class MainGUI:
         for source in Source.objects.order_by('name'):
             self.source_filter_model.append( ( source.id, source.name, source.issue, source.location, source.publisher, source.publication_date ) )
 
+
+    def init_bookmark_pane(self):
+        treeview_bookmarks = self.ui.get_widget('treeview_bookmarks')
+        # id, page, title, updated
+        self.treeview_bookmarks_model = gtk.ListStore( int, int, str, str )
+        treeview_bookmarks.set_model( self.treeview_bookmarks_model )
+        #treeview_bookmarks.connect('button-press-event', self.handle_middle_top_pane_button_press_event)
+        column = gtk.TreeViewColumn("Page", gtk.CellRendererText(), markup=1)
+        column.connect('clicked', sort_model_by_column, self.treeview_bookmarks_model, 1)
+        treeview_bookmarks.append_column( column )
+        column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=2)
+        column.connect('clicked', sort_model_by_column, self.treeview_bookmarks_model, 2)
+        treeview_bookmarks.append_column( column )
+        column = gtk.TreeViewColumn("Updated", gtk.CellRendererText(), markup=3)
+        column.connect('clicked', sort_model_by_column, self.treeview_bookmarks_model, 3)
+        treeview_bookmarks.append_column( column )
+        
         
     def init_paper_information_pane(self):
         paper_notes = self.ui.get_widget('paper_notes')
@@ -1384,6 +1402,9 @@ class MainGUI:
                     if citations[i].url_from_referenced_paper and not citations[i].referencing_paper:
                         importable_citations.add( citations[i] )
                     self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ citations[i].line_from_referenced_paper ) )
+
+                self.treeview_bookmarks_model.clear()
+                self.treeview_bookmarks_model.append( (-1, 0, '(info about paper)', str(paper.updated)) )
 
                 paper_notes.get_buffer().set_text( paper.notes )
                 paper_notes.set_property('sensitive', True)
