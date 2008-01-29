@@ -538,7 +538,7 @@ def import_acm_citation(params):
         
         
         paper.save()
-        print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.authors.all()
+        print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.get_authors_in_order()
         return paper
     except:
         traceback.print_exc()
@@ -619,7 +619,7 @@ def import_ieee_citation(params):
                 else:
                     print thread.get_ident(), 'error downloading paper:', params
         
-        print thread.get_ident(), 'imported paper =', paper.id, paper.doi, paper.title, paper.authors.all()
+        print thread.get_ident(), 'imported paper =', paper.id, paper.doi, paper.title, paper.authors.get_authors_in_order()
         return paper
     except:
         traceback.print_exc()
@@ -643,7 +643,7 @@ def import_document( filename, data=None ):
             paper.save()
             print thread.get_ident(), 'imported paper =', filename
         else:
-            print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.authors.all()
+            print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.authors.get_authors_in_order()
     except:
         traceback.print_exc()
         if paper:
@@ -815,8 +815,8 @@ class MainGUI:
     def init_my_library_filter_pane(self):
         
         author_filter = self.ui.get_widget('author_filter')
-        # id, author
-        self.author_filter_model = gtk.ListStore( int, str )
+        # id, author, paper_count
+        self.author_filter_model = gtk.ListStore( int, str, int )
         author_filter.set_model( self.author_filter_model )
         author_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         column = gtk.TreeViewColumn("Author", gtk.CellRendererText(), text=1)
@@ -824,20 +824,29 @@ class MainGUI:
         column.set_expand(True)
         column.connect('clicked', sort_model_by_column, self.author_filter_model, 1)
         author_filter.append_column( column )
+        column = gtk.TreeViewColumn("Papers", gtk.CellRendererText(), text=2)
+        column.connect('clicked', sort_model_by_column, self.author_filter_model, 2)
+        author_filter.append_column( column )
         make_all_columns_resizeable_clickable_ellipsize( author_filter.get_columns() )
         author_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
         author_filter.connect('row-activated', self.handle_author_filter_row_activated )
         author_filter.connect('button-press-event', self.handle_author_filter_button_press_event)
 
         organization_filter = self.ui.get_widget('organization_filter')
-        # id, org
-        self.organization_filter_model = gtk.ListStore( int, str )
+        # id, org, author_count, paper_count
+        self.organization_filter_model = gtk.ListStore( int, str, int, int )
         organization_filter.set_model( self.organization_filter_model )
         organization_filter.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         column = gtk.TreeViewColumn("Organization", gtk.CellRendererText(), text=1)
         column.set_min_width(128)
         column.set_expand(True)
         column.connect('clicked', sort_model_by_column, self.organization_filter_model, 1)
+        organization_filter.append_column( column )
+        column = gtk.TreeViewColumn("Authors", gtk.CellRendererText(), text=2)
+        column.connect('clicked', sort_model_by_column, self.organization_filter_model, 2)
+        organization_filter.append_column( column )
+        column = gtk.TreeViewColumn("Papers", gtk.CellRendererText(), text=3)
+        column.connect('clicked', sort_model_by_column, self.organization_filter_model, 3)
         organization_filter.append_column( column )
         make_all_columns_resizeable_clickable_ellipsize( organization_filter.get_columns() )
         organization_filter.get_selection().connect( 'changed', lambda x: thread.start_new_thread( self.refresh_middle_pane_from_my_library, (False,) ) )
@@ -871,15 +880,15 @@ class MainGUI:
     def refresh_my_library_filter_pane(self):
 
         self.author_filter_model.clear()
-        for author in Author.objects.all():
-            self.author_filter_model.append( ( author.id, author.name ) )
+        for author in Author.objects.order_by('name'):
+            self.author_filter_model.append( ( author.id, author.name, author.paper_set.count() ) )
 
         self.organization_filter_model.clear()
-        for organization in Organization.objects.all():
-            self.organization_filter_model.append( ( organization.id, organization.name ) )
+        for organization in Organization.objects.order_by('name'):
+            self.organization_filter_model.append( ( organization.id, organization.name, organization.author_set.count(), organization.paper_set.count() ) )
 
         self.source_filter_model.clear()
-        for source in Source.objects.all():
+        for source in Source.objects.order_by('name'):
             self.source_filter_model.append( ( source.id, source.name, source.issue, source.location, source.publisher, source.publication_date ) )
 
         
@@ -1367,7 +1376,7 @@ class MainGUI:
                         importable_references.add( references[i] )
                     self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ references[i].line_from_referencing_paper ) )
                 importable_citations = set()
-                citations = paper.citation_set.all()
+                citations = paper.citation_set.order_by('id')
 #                self.paper_information_pane_model.append(( '<b>Citations:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ citations[i].line_from_referenced_paper for i in range(0,len(citations)) ] ) ,))
                 for i in range(0,len(citations)):
                     if i==0: col1 = '<b>Citations:</b>'
@@ -1475,7 +1484,7 @@ class MainGUI:
         dialog.destroy()
         if response == gtk.RESPONSE_YES:
             for paper in papers:
-                print 'deleting paper:', paper.doi, paper.title, paper.authors.all()
+                print 'deleting paper:', paper.doi, paper.title, paper.authors.get_authors_in_order()
                 paper.delete()
             self.refresh_middle_pane_search()
             
@@ -1580,7 +1589,7 @@ class MainGUI:
                     if refresh_library_filter_pane:
                         self.refresh_my_library_filter_pane()
                         my_library_filter_pane.show()
-                    paper_query = Paper.objects.all()
+                    paper_query = Paper.objects.order_by('title')
     
                     filter_liststore, filter_rows = self.ui.get_widget('author_filter').get_selection().get_selected_rows()
                     q = None
@@ -1975,7 +1984,7 @@ class AuthorEditGUI:
         treeview_organizations.append_column( column )
         make_all_columns_resizeable_clickable_ellipsize( treeview_organizations.get_columns() )
         treeview_organizations.connect('button-press-event', self.handle_organizations_button_press_event)
-        for organization in self.author.organizations.all():
+        for organization in self.author.organizations.order_by('name'):
             self.organizations_model.append( ( organization.id, organization.name, organization.location ) )
         
         button = gtk.ToolButton(gtk.STOCK_ADD)
