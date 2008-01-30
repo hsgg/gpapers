@@ -705,9 +705,9 @@ class MainGUI:
         self.init_my_library_filter_pane()
         self.init_middle_top_pane()
         self.init_paper_information_pane()
+        self.init_busy_notifier()
+        self.init_bookmark_pane()
         self.refresh_left_pane()  
-        self.init_busy_notifier()   
-        self.init_bookmark_pane()   
         main_window.show()
         
     def init_busy_notifier(self):
@@ -899,16 +899,32 @@ class MainGUI:
         self.treeview_bookmarks_model = gtk.ListStore( int, int, str, str )
         treeview_bookmarks.set_model( self.treeview_bookmarks_model )
         #treeview_bookmarks.connect('button-press-event', self.handle_middle_top_pane_button_press_event)
-        column = gtk.TreeViewColumn("Page", gtk.CellRendererText(), markup=1)
+        renderer = gtk.CellRendererSpin()
+        renderer.set_property( 'adjustment', gtk.Adjustment(value=0, lower=0, upper=1000, step_incr=1, page_incr=10, page_size=10) )
+        renderer.set_property("editable", True)
+#        renderer.connect( 'edited', lambda cellrenderertext, path, new_text: self.organizations_model.set_value( self.organizations_model.get_iter(path), 1, new_text ) or self.update_organization_name( self.organizations_model.get_value( self.organizations_model.get_iter(path), 0 ), new_text ) )
+        renderer.connect( 'edited', lambda cellrenderertext, path, new_text: self.treeview_bookmarks_model.set_value( self.treeview_bookmarks_model.get_iter(path), 1, int(new_text) ) or self.save_bookmark_page( self.treeview_bookmarks_model.get_value( self.treeview_bookmarks_model.get_iter(path), 0), int(new_text) ) )
+        column = gtk.TreeViewColumn("Page", renderer, markup=1)
+#        column.set_cell_data_func(renderer, self.save_bookmark_page) 
         column.connect('clicked', sort_model_by_column, self.treeview_bookmarks_model, 1)
         treeview_bookmarks.append_column( column )
         column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=2)
+        column.set_expand(True)
         column.connect('clicked', sort_model_by_column, self.treeview_bookmarks_model, 2)
         treeview_bookmarks.append_column( column )
         column = gtk.TreeViewColumn("Updated", gtk.CellRendererText(), markup=3)
+        column.set_min_width(75)
         column.connect('clicked', sort_model_by_column, self.treeview_bookmarks_model, 3)
         treeview_bookmarks.append_column( column )
+        make_all_columns_resizeable_clickable_ellipsize( treeview_bookmarks.get_columns() )
+        treeview_bookmarks.connect('button-press-event', self.handle_treeview_bookmarks_button_press_event)
         
+        treeview_bookmarks.get_selection().connect( 'changed', self.select_bookmark_pane_item )
+        
+    def save_bookmark_page(self, bookmark_id, page):
+        bookmark = Bookmark.objects.get(id=bookmark_id)
+        bookmark.page = page
+        bookmark.save()
         
     def init_paper_information_pane(self):
         paper_notes = self.ui.get_widget('paper_notes')
@@ -1002,7 +1018,7 @@ class MainGUI:
 
         try:
             self.current_playlist = Playlist.objects.get(id=liststore[rows[0]][2])
-            button = gtk.ToolButton(gtk.STOCK_REMOVE)
+            button = gtk.ToolButton(gtk.STOCK_DELETE)
             button.set_tooltip(gtk.Tooltips(), 'Delete this collection...')
             button.connect( 'clicked', lambda x: self.delete_playlist(self.current_playlist.id) )
             button.show()
@@ -1229,6 +1245,26 @@ class MainGUI:
                     menu.popup(None, None, None, event.button, event.get_time())
             return True
         
+    def handle_treeview_bookmarks_button_press_event(self, treeview, event):
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                id = self.treeview_bookmarks_model.get_value( self.treeview_bookmarks_model.get_iter(path), 0 )
+                if id>=0: #len(path)==2:
+                    menu = gtk.Menu()
+                    delete = gtk.ImageMenuItem(stock_id=gtk.STOCK_DELETE)
+                    delete.connect( 'activate', lambda x: self.delete_bookmark(id) )
+                    menu.append(delete)
+                    menu.show_all()
+                    menu.popup(None, None, None, event.button, event.get_time())
+            return True
+    
     def handle_organization_filter_button_press_event(self, treeview, event):
         if event.button == 3:
             x = int(event.x)
@@ -1326,22 +1362,15 @@ class MainGUI:
         liststore, rows = selection.get_selected_rows()
         self.paper_information_pane_model.clear()
         self.ui.get_widget('paper_information_pane').columns_autosize()
-        paper_notes = self.ui.get_widget('paper_notes')
-        try: 
-            if not self.update_paper_notes_handler_id==None:
-                paper_notes.get_buffer().disconnect(self.update_paper_notes_handler_id)
-            self.update_paper_notes_handler_id = None
-        except:
-            self.update_paper_notes_handler_id = None
-        paper_notes.get_buffer().set_text('')
-        paper_notes.set_property('sensitive', False)
         paper_information_toolbar = self.ui.get_widget('paper_information_toolbar')
         paper_information_toolbar.foreach( paper_information_toolbar.remove )
+        self.displayed_paper = None
+
         if len(rows)==0:
-            pass
+            self.update_bookmark_pane_from_paper(None)
         elif len(rows)==1:
             try: 
-                paper = Paper.objects.get(id=liststore[rows[0]][0])
+                self.displayed_paper = paper = Paper.objects.get(id=liststore[rows[0]][0])
             except:
                 paper = None
             if liststore[rows[0]][2]:
@@ -1403,12 +1432,7 @@ class MainGUI:
                         importable_citations.add( citations[i] )
                     self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ citations[i].line_from_referenced_paper ) )
 
-                self.treeview_bookmarks_model.clear()
-                self.treeview_bookmarks_model.append( (-1, 0, '(info about paper)', str(paper.updated)) )
-
-                paper_notes.get_buffer().set_text( paper.notes )
-                paper_notes.set_property('sensitive', True)
-                self.update_paper_notes_handler_id = paper_notes.get_buffer().connect('changed', self.update_paper_notes, paper.id )
+                self.update_bookmark_pane_from_paper(self.displayed_paper)
 
                 button = gtk.ToolButton(gtk.STOCK_EDIT)
                 button.set_tooltip(gtk.Tooltips(), 'Edit this paper...')
@@ -1455,6 +1479,7 @@ class MainGUI:
                     import_button.set_menu( import_button_menu )
             
         else:
+            self.update_bookmark_pane_from_paper(None)
             self.paper_information_pane_model.append(( '<b>Number of papers:</b>', len(rows) ,))
             
             downloadable_paper_urls = set()
@@ -1485,14 +1510,76 @@ class MainGUI:
 
         paper_information_toolbar.show_all()
         
+    def update_bookmark_pane_from_paper(self, paper):
+        toolbar_bookmarks = self.ui.get_widget('toolbar_bookmarks')
+        toolbar_bookmarks.foreach( toolbar_bookmarks.remove )
+        self.treeview_bookmarks_model.clear()
+        if paper:
+            for bookmark in paper.bookmark_set.order_by('page'):
+                try: title = str(bookmark.notes).split('\n')[0]
+                except: title = str(bookmark.notes)
+                self.treeview_bookmarks_model.append( (bookmark.id, bookmark.page, title, bookmark.updated.strftime(DATE_FORMAT)) )
+        self.select_bookmark_pane_item()
+            
+    def select_bookmark_pane_item(self, selection=None):
+        if selection==None:
+            selection = self.ui.get_widget('treeview_bookmarks').get_selection()
+        toolbar_bookmarks = self.ui.get_widget('toolbar_bookmarks')
+        toolbar_bookmarks.foreach( toolbar_bookmarks.remove )
+        
+        try: selected_bookmark_id = self.treeview_bookmarks_model.get_value( self.ui.get_widget('treeview_bookmarks').get_selection().get_selected()[1], 0 )
+        except: selected_bookmark_id = -1
+        
+        paper_notes = self.ui.get_widget('paper_notes')
+        try: 
+            if not self.update_paper_notes_handler_id==None:
+                paper_notes.get_buffer().disconnect(self.update_paper_notes_handler_id)
+            self.update_paper_notes_handler_id = None
+        except:
+            self.update_paper_notes_handler_id = None
+        
+        if selected_bookmark_id!=-1:
+                paper_notes.get_buffer().set_text( Bookmark.objects.get(id=selected_bookmark_id).notes )
+                paper_notes.set_property('sensitive', True)
+                self.update_paper_notes_handler_id = paper_notes.get_buffer().connect('changed', self.update_bookmark_notes, selected_bookmark_id )
+        elif self.displayed_paper:
+                paper_notes.get_buffer().set_text( self.displayed_paper.notes )
+                paper_notes.set_property('sensitive', True)
+                self.update_paper_notes_handler_id = paper_notes.get_buffer().connect('changed', self.update_paper_notes, self.displayed_paper.id )
+        else:
+            paper_notes.get_buffer().set_text('')
+            paper_notes.set_property('sensitive', False)
+
+        
+        if self.displayed_paper:
+            button = gtk.ToolButton(gtk.STOCK_ADD)
+            button.set_tooltip(gtk.Tooltips(), 'Add a new bookmark...')
+            button.connect( 'clicked', lambda x, paper: Bookmark.objects.create(paper=paper, page=0).save() or self.select_middle_top_pane_item( self.ui.get_widget('middle_top_pane').get_selection() ), self.displayed_paper )
+            button.show()
+            toolbar_bookmarks.insert( button, -1 )
+
+        if selected_bookmark_id!=-1:
+            button = gtk.ToolButton(gtk.STOCK_DELETE)
+            button.set_tooltip(gtk.Tooltips(), 'Delete this bookmark...')
+            button.connect( 'clicked', lambda x: self.delete_bookmark( selected_bookmark_id )  )
+            button.show()
+            toolbar_bookmarks.insert( button, -1 )
+        
+        
     def echo_objects(self, a=None, b=None, c=None):
         print a,b,c
         
-    def update_paper_notes(self, text_buffer, paper_id):
-        paper = Paper.objects.get(id=paper_id)
+    def update_paper_notes(self, text_buffer, id):
+        paper = Paper.objects.get(id=id)
         #print 'saving notes', text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
         paper.notes = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
         paper.save()
+        
+    def update_bookmark_notes(self, text_buffer, id):
+        bookmark = Bookmark.objects.get(id=id)
+        #print 'saving notes', text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
+        bookmark.notes = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
+        bookmark.save()
         
     def delete_papers(self, paper_ids):
         papers = Paper.objects.in_bulk(paper_ids).values()
@@ -1540,6 +1627,17 @@ class MainGUI:
         if response == gtk.RESPONSE_YES:
             Author.objects.get(id=id).delete()
             self.refresh_my_library_filter_pane()
+    
+    def delete_bookmark(self, id):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really delete this bookmark?')
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            Bookmark.objects.get(id=id).delete()
+            self.select_middle_top_pane_item( self.ui.get_widget('middle_top_pane').get_selection() )
     
     def delete_source(self, id):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
