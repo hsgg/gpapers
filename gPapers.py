@@ -1192,9 +1192,9 @@ class MainGUI:
                         button = gtk.ImageMenuItem(gtk.STOCK_OPEN)
                         button.connect( 'activate', lambda x: paper.open() )
                         menu.append(button)
-                        button = gtk.ImageMenuItem(gtk.STOCK_EDIT)
-                        button.connect( 'activate', lambda x: PaperEditGUI(paper.id) )
-                        menu.append(button)
+                    button = gtk.ImageMenuItem(gtk.STOCK_EDIT)
+                    button.connect( 'activate', lambda x: PaperEditGUI(paper.id) )
+                    menu.append(button)
                     menu.show_all()
                     menu.popup(None, None, None, event.button, event.get_time())
             return True
