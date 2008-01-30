@@ -638,8 +638,8 @@ def import_document( filename, data=None ):
         md5_hexdigest = get_md5_hexdigest_from_data( data )
         paper, created = Paper.objects.get_or_create( full_text_md5=md5_hexdigest )
         if created:
-            paper.title = filename
-            paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
+            #paper.title = filename
+            paper.save_full_text_file( defaultfilters.slugify(os.path.split(filename)[1].replace('.pdf',''))+'.pdf', data )
             paper.save()
             print thread.get_ident(), 'imported paper =', filename
         else:
@@ -895,8 +895,8 @@ class MainGUI:
 
     def init_bookmark_pane(self):
         treeview_bookmarks = self.ui.get_widget('treeview_bookmarks')
-        # id, page, title, updated
-        self.treeview_bookmarks_model = gtk.ListStore( int, int, str, str )
+        # id, page, title, updated, words
+        self.treeview_bookmarks_model = gtk.ListStore( int, int, str, str, int )
         treeview_bookmarks.set_model( self.treeview_bookmarks_model )
         #treeview_bookmarks.connect('button-press-event', self.handle_middle_top_pane_button_press_event)
         renderer = gtk.CellRendererSpin()
@@ -911,6 +911,9 @@ class MainGUI:
         column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=2)
         column.set_expand(True)
         column.connect('clicked', sort_model_by_column, self.treeview_bookmarks_model, 2)
+        treeview_bookmarks.append_column( column )
+        column = gtk.TreeViewColumn("Words", gtk.CellRendererText(), markup=4)
+        column.connect('clicked', sort_model_by_column, self.treeview_bookmarks_model, 4)
         treeview_bookmarks.append_column( column )
         column = gtk.TreeViewColumn("Updated", gtk.CellRendererText(), markup=3)
         column.set_min_width(75)
@@ -1194,6 +1197,9 @@ class MainGUI:
                         menu.append(button)
                     button = gtk.ImageMenuItem(gtk.STOCK_EDIT)
                     button.connect( 'activate', lambda x: PaperEditGUI(paper.id) )
+                    menu.append(button)
+                    button = gtk.ImageMenuItem(gtk.STOCK_DELETE)
+                    button.connect( 'activate', lambda x: self.delete_papers( [paper.id] ) )
                     menu.append(button)
                     menu.show_all()
                     menu.popup(None, None, None, event.button, event.get_time())
@@ -1518,7 +1524,7 @@ class MainGUI:
             for bookmark in paper.bookmark_set.order_by('page'):
                 try: title = str(bookmark.notes).split('\n')[0]
                 except: title = str(bookmark.notes)
-                self.treeview_bookmarks_model.append( (bookmark.id, bookmark.page, title, bookmark.updated.strftime(DATE_FORMAT)) )
+                self.treeview_bookmarks_model.append( (bookmark.id, bookmark.page, title, bookmark.updated.strftime(DATE_FORMAT), len(str(bookmark.notes).split())) )
         self.select_bookmark_pane_item()
             
     def select_bookmark_pane_item(self, selection=None):
@@ -1592,7 +1598,7 @@ class MainGUI:
         dialog.destroy()
         if response == gtk.RESPONSE_YES:
             for paper in papers:
-                print 'deleting paper:', paper.doi, paper.title, paper.authors.get_authors_in_order()
+                print 'deleting paper:', paper.doi, paper.title, paper.get_authors_in_order()
                 paper.delete()
             self.refresh_middle_pane_search()
             
@@ -2429,6 +2435,7 @@ class PaperEditGUI:
         self.ui.get_widget('entry_doi').set_text( self.paper.doi )
         self.ui.get_widget('textview_abstract').get_buffer().set_text( self.paper.abstract )
         self.ui.get_widget('textview_bibtex').get_buffer().set_text( self.paper.bibtex )
+        self.ui.get_widget('textview_extracted_text').get_buffer().set_text( self.paper.extracted_text )
         self.ui.get_widget('filechooserbutton').set_filename( self.paper.get_full_text_filename() )
         self.ui.get_widget('spinbutton_rating').set_value( self.paper.rating )
         self.ui.get_widget('spinbutton_read_count').set_value( self.paper.read_count )

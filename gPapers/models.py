@@ -1,6 +1,6 @@
-import md5, os
+import md5, os, traceback
 from django.db import models
-import desktop
+import desktop, pyPdf
 
 
 class Publisher(models.Model):
@@ -114,6 +114,8 @@ class Paper(models.Model):
     organizations = models.ManyToManyField(Organization)
     full_text = models.FileField(upload_to=os.path.join('papers','%Y','%m'))
     full_text_md5 = models.CharField(max_length='32', blank=True)
+    extracted_text = models.TextField(blank=True)
+    page_count = models.IntegerField(default=0)
     rating = models.IntegerField(default=0)
     read_count = models.IntegerField(default=0)
     bibtex = models.TextField(blank=True)
@@ -125,6 +127,7 @@ class Paper(models.Model):
         m.update(raw_contents)
         self.full_text_md5 = m.hexdigest()
         super(Paper, self)._save_FIELD_file(field, filename, raw_contents, save)
+        self.extract_document_information_from_pdf()
 
     def get_authors_in_order(self):
         from django.db import connection
@@ -141,6 +144,31 @@ class Paper(models.Model):
             desktop.open( self.get_full_text_filename() )
             self.read_count = self.read_count + 1
             self.save()
+
+    def extract_document_information_from_pdf(self):
+        """will overwrite the extracted_text and page_count fields, and the title if the title is empty"""
+        if os.path.isfile( self.get_full_text_filename() ):
+            content = []
+            # Load PDF into pyPDF
+            pdf = pyPdf.PdfFileReader(file(self.get_full_text_filename(), "rb"))
+            doc_info = pdf.getDocumentInfo()
+            print 'doc_info', doc_info
+            if not self.title:
+                try: self.title = doc_info['/Title']
+                except: self.title = os.path.split(self.get_full_text_filename())[1]
+            # also has: doc_info['/Author'], doc_info['/ModDate'], doc_info['/CreationDate']
+            # Iterate pages
+            self.page_count = pdf.getNumPages()
+            for i in range(0, self.page_count):
+                # Extract text from page and add to content
+                try: content.append( pdf.getPage(i).extractText() )
+                except: pass
+            
+            self.extracted_text = '\n\n'.join( content )
+        else:
+            self.page_count = 0
+            self.extracted_text = ''
+        return self.extracted_text
 
     class Admin:
         list_display = ( 'id', 'doi', 'title' )
