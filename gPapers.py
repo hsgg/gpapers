@@ -247,7 +247,7 @@ def import_documents_via_filenames(filenames):
     main_gui.refresh_middle_pane_search()
     
 def import_citation(url, refresh_after=True):
-    main_gui.active_thread_ids.add( thread.get_ident() )
+    main_gui.active_threads[ thread.get_ident() ] = 'importing: '+ url
     try:
         params = openanything.fetch(url)
         if params['status']!=200 and params['status']!=302 :
@@ -285,7 +285,8 @@ def import_citation(url, refresh_after=True):
     error.set_markup('<b>Unknown Source</b>\n\nThis URL is from an unknown citation source.')
     error.run()
     gtk.gdk.threads_leave()
-    main_gui.active_thread_ids.remove( thread.get_ident() )
+    if main_gui.active_threads.has_key( thread.get_ident() ):
+        del main_gui.active_threads[ thread.get_ident() ]
     
 def should_we_reimport_paper(paper):
     gtk.gdk.threads_enter()
@@ -653,7 +654,7 @@ def import_document( filename, data=None ):
 class MainGUI:
     
     current_middle_top_pane_refresh_thread_ident = None
-    active_thread_ids = set()
+    active_threads = {}
     
     def import_url(self, o):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
@@ -714,19 +715,37 @@ class MainGUI:
         busy_notifier = self.ui.get_widget('busy_notifier')
         busy_notifier.set_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'blank.gif' ) )
         self.busy_notifier_is_running = False
+        
+        treeview_running_tasks = self.ui.get_widget('treeview_running_tasks')
+        # thread_id, text
+        self.treeview_running_tasks_model = gtk.ListStore( int, str )
+        treeview_running_tasks.set_model( self.treeview_running_tasks_model )
+        
+        renderer = gtk.CellRendererText()
+        renderer.set_property("background", "#fff7e8") # gtk.gdk.color_parse("#fff7e8")
+        column = gtk.TreeViewColumn("Running Tasks...", renderer, text=1)
+        column.set_expand(True)
+        treeview_running_tasks.append_column( column )
+        make_all_columns_resizeable_clickable_ellipsize( treeview_running_tasks.get_columns() )
+        
         thread.start_new_thread( self.watch_busy_notifier, () )
 
     def watch_busy_notifier(self):
         while True:
             try:
-                if len(self.active_thread_ids):
+                if len(self.active_threads):
+                    self.treeview_running_tasks_model.clear()
+                    for x in self.active_threads.items():
+                        self.treeview_running_tasks_model.append( x )
                     if not self.busy_notifier_is_running:
                         self.ui.get_widget('busy_notifier').set_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'process-working.gif' ) )
                         self.busy_notifier_is_running = True
+                        self.ui.get_widget('treeview_running_tasks').show()
                 else:
                     if self.busy_notifier_is_running:
                         self.ui.get_widget('busy_notifier').set_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'blank.gif' ) )
                         self.busy_notifier_is_running = False
+                        self.ui.get_widget('treeview_running_tasks').hide()
             except:
                 traceback.print_exc()
             time.sleep(1)
@@ -1680,7 +1699,7 @@ class MainGUI:
             gtk.gdk.threads_leave()
 
     def refresh_middle_pane_from_my_library(self, refresh_library_filter_pane=True):
-        self.active_thread_ids.add( thread.get_ident() )
+        self.active_threads[ thread.get_ident() ] = 'searching local library...'
         try:
             rows = []
             my_library_filter_pane = self.ui.get_widget('my_library_filter_pane')
@@ -1783,7 +1802,9 @@ class MainGUI:
             self.refresh_my_library_count()
         except:
             traceback.print_exc()
-        self.active_thread_ids.remove( thread.get_ident() )
+        if self.active_threads.has_key( thread.get_ident() ):
+            del self.active_threads[ thread.get_ident() ]
+        
     
     def refresh_my_library_count(self):
         gtk.gdk.threads_enter()
@@ -1794,7 +1815,7 @@ class MainGUI:
     
     def refresh_middle_pane_from_acm(self):
         if not self.ui.get_widget('middle_pane_search').get_text(): return
-        self.active_thread_ids.add( thread.get_ident() )
+        self.active_threads[ thread.get_ident() ] = 'searching acm...'
         rows = []
         try:
             params = openanything.fetch( 'http://portal.acm.org/results.cfm?dl=ACM&query=%s' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
@@ -1849,11 +1870,12 @@ class MainGUI:
                 gtk.gdk.threads_leave()
         except:
             traceback.print_exc()
-        self.active_thread_ids.remove( thread.get_ident() )
+        if self.active_threads.has_key( thread.get_ident() ):
+            del self.active_threads[ thread.get_ident() ]
             
     def refresh_middle_pane_from_ieee(self):
         if not self.ui.get_widget('middle_pane_search').get_text(): return
-        self.active_thread_ids.add( thread.get_ident() )
+        self.active_threads[ thread.get_ident() ] = 'searching ieee...'
         rows = []
         try:
             params = openanything.fetch( 'http://ieeexplore.ieee.org/search/freesearchresult.jsp?history=yes&queryText=%%28%s%%29&imageField.x=0&imageField.y=0' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
@@ -1913,11 +1935,12 @@ class MainGUI:
                 gtk.gdk.threads_leave()
         except:
             traceback.print_exc()
-        self.active_thread_ids.remove( thread.get_ident() )
+        if self.active_threads.has_key( thread.get_ident() ):
+            del self.active_threads[ thread.get_ident() ]
 
     def refresh_middle_pane_from_pubmed(self):
         if not self.ui.get_widget('middle_pane_search').get_text(): return
-        self.active_thread_ids.add( thread.get_ident() )
+        self.active_threads[ thread.get_ident() ] = 'searching pubmed...'
         rows = []
         try:
             post_data = {
@@ -1997,11 +2020,12 @@ class MainGUI:
                 gtk.gdk.threads_leave()
         except:
             traceback.print_exc()
-        self.active_thread_ids.remove( thread.get_ident() )
+        if self.active_threads.has_key( thread.get_ident() ):
+            del self.active_threads[ thread.get_ident() ]
 
     def refresh_middle_pane_from_citeseer(self):
         if not self.ui.get_widget('middle_pane_search').get_text(): return
-        self.active_thread_ids.add( thread.get_ident() )
+        self.active_threads[ thread.get_ident() ] = 'searching citeseer...'
         rows = []
         try:
             params = openanything.fetch( 'http://citeseer.ist.psu.edu/cis?q=%s&cs=1&am=50' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
@@ -2065,7 +2089,8 @@ class MainGUI:
                 gtk.gdk.threads_leave()
         except:
             traceback.print_exc()
-        self.active_thread_ids.remove( thread.get_ident() )
+        if self.active_threads.has_key( thread.get_ident() ):
+            del self.active_threads[ thread.get_ident() ]
 
 
 
@@ -2690,10 +2715,16 @@ def init_db():
 
 
 if __name__ == "__main__":
-    if not os.path.isdir( settings.MEDIA_ROOT ):
-        os.mkdir( settings.MEDIA_ROOT )
-    if not os.path.isdir( os.path.join( settings.MEDIA_ROOT, 'papers' ) ):
-        os.mkdir( os.path.join( settings.MEDIA_ROOT, 'papers' ) )
+    
+    MEDIA_ROOT = settings.MEDIA_ROOT
+
+    print 'gpapers: using database at', MEDIA_ROOT
+    print
+    
+    if not os.path.isdir( MEDIA_ROOT ):
+        os.mkdir( MEDIA_ROOT )
+    if not os.path.isdir( os.path.join( MEDIA_ROOT, 'papers' ) ):
+        os.mkdir( os.path.join( MEDIA_ROOT, 'papers' ) )
     global main_gui
     init_db()
     main_gui = MainGUI()
