@@ -106,6 +106,8 @@ class Paper(models.Model):
     
     title = models.CharField(max_length='1024')
     doi = models.CharField(max_length='1024', blank=True)
+    pubmed_id = models.CharField(max_length='1024', blank=True)
+    import_url = models.URLField(blank=True)
     source = models.ForeignKey(Source, null=True)
     source_session = models.CharField(max_length='1024', blank=True)
     source_pages = models.CharField(max_length='1024', blank=True)
@@ -129,7 +131,8 @@ class Paper(models.Model):
         m.update(raw_contents)
         self.full_text_md5 = m.hexdigest()
         super(Paper, self)._save_FIELD_file(field, filename, raw_contents, save)
-        self.extract_document_information_from_pdf()
+        try: self.extract_document_information_from_pdf()
+        except: traceback.print_exc()
 
     def get_authors_in_order(self):
         from django.db import connection

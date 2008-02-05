@@ -80,4 +80,22 @@ sqlite3_evolutions = [
         "INSERT INTO \"gPapers_author\" SELECT \"id\",\"name\",\"location\",\"department\",\"notes\",\"rating\",\"created\",\"updated\" FROM \"gPapers_author_1337_TMP\";",
         "DROP TABLE \"gPapers_author_1337_TMP\";",
     ],
+    [('fv1:-394475879','fv1:-91336673'), # generated 2008-02-05 01:15:38.477186
+        "ALTER TABLE \"gPapers_paper\" ADD COLUMN \"pubmed_id\" varchar(1024) NULL;",
+        "UPDATE \"gPapers_paper\" SET \"pubmed_id\" = '' WHERE \"pubmed_id\" IS NULL ;",
+        "-- FYI: sqlite does not support changing columns, so we create a new \"gPapers_paper\" and delete the old (ie, this could take a while if you have a lot of data)",
+        "ALTER TABLE \"gPapers_paper\" RENAME TO \"gPapers_paper_1337_TMP\";",
+        "CREATE TABLE \"gPapers_paper\" (\n    \"id\" integer NOT NULL PRIMARY KEY,\n    \"title\" varchar(1024) NOT NULL,\n    \"doi\" varchar(1024) NOT NULL,\n    \"pubmed_id\" varchar(1024) NOT NULL,\n    \"source_id\" integer NULL REFERENCES \"gPapers_source\" (\"id\"),\n    \"source_session\" varchar(1024) NOT NULL,\n    \"source_pages\" varchar(1024) NOT NULL,\n    \"abstract\" text NOT NULL,\n    \"notes\" text NOT NULL,\n    \"full_text\" varchar(100) NOT NULL,\n    \"full_text_md5\" varchar(32) NOT NULL,\n    \"extracted_text\" text NOT NULL,\n    \"page_count\" integer NOT NULL,\n    \"rating\" integer NOT NULL,\n    \"read_count\" integer NOT NULL,\n    \"bibtex\" text NOT NULL,\n    \"created\" datetime NOT NULL,\n    \"updated\" datetime NOT NULL\n)\n;",
+        "INSERT INTO \"gPapers_paper\" SELECT \"id\",\"title\",\"doi\",\"pubmed_id\",\"source_id\",\"source_session\",\"source_pages\",\"abstract\",\"notes\",\"full_text\",\"full_text_md5\",\"extracted_text\",\"page_count\",\"rating\",\"read_count\",\"bibtex\",\"created\",\"updated\" FROM \"gPapers_paper_1337_TMP\";",
+        "DROP TABLE \"gPapers_paper_1337_TMP\";",
+    ],
+    [('fv1:-91336673','fv1:752600870'), # generated 2008-02-05 01:31:17.132883
+        "ALTER TABLE \"gPapers_paper\" ADD COLUMN \"import_url\" varchar(200) NULL;",
+        "UPDATE \"gPapers_paper\" SET \"import_url\" = '' WHERE \"import_url\" IS NULL ;",
+        "-- FYI: sqlite does not support changing columns, so we create a new \"gPapers_paper\" and delete the old (ie, this could take a while if you have a lot of data)",
+        "ALTER TABLE \"gPapers_paper\" RENAME TO \"gPapers_paper_1337_TMP\";",
+        "CREATE TABLE \"gPapers_paper\" (\n    \"id\" integer NOT NULL PRIMARY KEY,\n    \"title\" varchar(1024) NOT NULL,\n    \"doi\" varchar(1024) NOT NULL,\n    \"pubmed_id\" varchar(1024) NOT NULL,\n    \"import_url\" varchar(200) NOT NULL,\n    \"source_id\" integer NULL REFERENCES \"gPapers_source\" (\"id\"),\n    \"source_session\" varchar(1024) NOT NULL,\n    \"source_pages\" varchar(1024) NOT NULL,\n    \"abstract\" text NOT NULL,\n    \"notes\" text NOT NULL,\n    \"full_text\" varchar(100) NOT NULL,\n    \"full_text_md5\" varchar(32) NOT NULL,\n    \"extracted_text\" text NOT NULL,\n    \"page_count\" integer NOT NULL,\n    \"rating\" integer NOT NULL,\n    \"read_count\" integer NOT NULL,\n    \"bibtex\" text NOT NULL,\n    \"created\" datetime NOT NULL,\n    \"updated\" datetime NOT NULL\n)\n;",
+        "INSERT INTO \"gPapers_paper\" SELECT \"id\",\"title\",\"doi\",\"pubmed_id\",\"import_url\",\"source_id\",\"source_session\",\"source_pages\",\"abstract\",\"notes\",\"full_text\",\"full_text_md5\",\"extracted_text\",\"page_count\",\"rating\",\"read_count\",\"bibtex\",\"created\",\"updated\" FROM \"gPapers_paper_1337_TMP\";",
+        "DROP TABLE \"gPapers_paper_1337_TMP\";",
+    ],
 ] # don't delete this comment! ## sqlite3_evolutions_end ##
