@@ -1706,7 +1706,7 @@ class MainGUI:
             
             if not self.current_playlist and self.current_papers==None:
                 
-                search_text = self.ui.get_widget('middle_pane_search').get_text()
+                search_text = self.ui.get_widget('middle_pane_search').get_text().strip()
                 if search_text:
                     my_library_filter_pane.hide()
                     paper_ids = set()
@@ -1789,7 +1789,7 @@ class MainGUI:
                     paper.title,
                     journal, 
                     pub_year, 
-                    paper.rating/0.05, 
+                    (paper.rating+10)*5, 
                     paper.abstract, 
                     icon, # icon
                     None, # import_url
@@ -1814,11 +1814,12 @@ class MainGUI:
         gtk.gdk.threads_leave()
     
     def refresh_middle_pane_from_acm(self):
-        if not self.ui.get_widget('middle_pane_search').get_text(): return
-        self.active_threads[ thread.get_ident() ] = 'searching acm...'
+        search_text = self.ui.get_widget('middle_pane_search').get_text().strip()
+        if not search_text: return
+        self.active_threads[ thread.get_ident() ] = 'searching acm... (%s)' % search_text
         rows = []
         try:
-            params = openanything.fetch( 'http://portal.acm.org/results.cfm?dl=ACM&query=%s' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
+            params = openanything.fetch( 'http://portal.acm.org/results.cfm?dl=ACM&query=%s' % defaultfilters.urlencode( search_text ) )
             if params['status']==200 or params['status']==302:
                 soup = BeautifulSoup.BeautifulSoup( params['data'] )
                 parent_search_table_node = soup.find('div', attrs={'class':'authors'}).parent.parent.parent.parent.parent.parent
@@ -1874,11 +1875,12 @@ class MainGUI:
             del self.active_threads[ thread.get_ident() ]
             
     def refresh_middle_pane_from_ieee(self):
-        if not self.ui.get_widget('middle_pane_search').get_text(): return
-        self.active_threads[ thread.get_ident() ] = 'searching ieee...'
+        search_text = self.ui.get_widget('middle_pane_search').get_text().strip()
+        if not search_text: return
+        self.active_threads[ thread.get_ident() ] = 'searching ieee... (%s)' % search_text
         rows = []
         try:
-            params = openanything.fetch( 'http://ieeexplore.ieee.org/search/freesearchresult.jsp?history=yes&queryText=%%28%s%%29&imageField.x=0&imageField.y=0' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
+            params = openanything.fetch( 'http://ieeexplore.ieee.org/search/freesearchresult.jsp?history=yes&queryText=%%28%s%%29&imageField.x=0&imageField.y=0' % defaultfilters.urlencode( search_text ) )
             if params['status']==200 or params['status']==302:
                 soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<!-BMS End-->','') )
                 for node in soup.findAll( 'td', attrs={'class':'bodyCopyBlackLarge'} ):
@@ -1939,13 +1941,14 @@ class MainGUI:
             del self.active_threads[ thread.get_ident() ]
 
     def refresh_middle_pane_from_pubmed(self):
-        if not self.ui.get_widget('middle_pane_search').get_text(): return
-        self.active_threads[ thread.get_ident() ] = 'searching pubmed...'
+        search_text = self.ui.get_widget('middle_pane_search').get_text().strip()
+        if not search_text: return
+        self.active_threads[ thread.get_ident() ] = 'searching pubmed... (%s)' % search_text
         rows = []
         try:
             post_data = {
                 'EntrezSystem2.PEntrez.DbConnector.Db': 'pubmed',
-                'EntrezSystem2.PEntrez.DbConnector.TermToSearch': self.ui.get_widget('middle_pane_search').get_text(),
+                'EntrezSystem2.PEntrez.DbConnector.TermToSearch': search_text,
                 'EntrezSystem2.PEntrez.Pubmed.CommandTab.LimitsActive': 'false',
                 'EntrezSystem2.PEntrez.Pubmed.Pubmed_ResultsPanel.Pager.InitialPageSize': '20',
                 'EntrezSystem2.PEntrez.Pubmed.Pubmed_ResultsPanel.Pubmed_DisplayBar.PageSize': '20',
@@ -2024,11 +2027,12 @@ class MainGUI:
             del self.active_threads[ thread.get_ident() ]
 
     def refresh_middle_pane_from_citeseer(self):
-        if not self.ui.get_widget('middle_pane_search').get_text(): return
-        self.active_threads[ thread.get_ident() ] = 'searching citeseer...'
+        search_text = self.ui.get_widget('middle_pane_search').get_text().strip()
+        if not search_text: return
+        self.active_threads[ thread.get_ident() ] = 'searching citeseer... (%s)' % search_text
         rows = []
         try:
-            params = openanything.fetch( 'http://citeseer.ist.psu.edu/cis?q=%s&cs=1&am=50' % defaultfilters.urlencode( self.ui.get_widget('middle_pane_search').get_text() ) )
+            params = openanything.fetch( 'http://citeseer.ist.psu.edu/cis?q=%s&cs=1&am=50' % defaultfilters.urlencode( search_text ) )
             if params['status']==200 or params['status']==302:
                 for html in params['data'][ params['data'].find('<!--RLS-->')+20 : params['data'].find('<!--RLE-->') ].split('<!--RIS-->'):
                     print '============================================================='
@@ -2110,6 +2114,9 @@ class AuthorEditGUI:
         self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
         self.ui.get_widget('entry_name').set_text( self.author.name )
         self.ui.get_widget('label_paper_count').set_text( str( self.author.paper_set.count() ) )
+        self.ui.get_widget('notes').get_buffer().set_text( self.author.notes )
+        self.ui.get_widget('notes').modify_base( gtk.STATE_NORMAL, gtk.gdk.color_parse("#fff7e8") )
+        self.ui.get_widget('rating').set_value( self.author.rating )
 
         treeview_organizations = self.ui.get_widget('treeview_organizations')
         # id, org, location
@@ -2209,6 +2216,9 @@ class AuthorEditGUI:
         
     def save(self):
         self.author.name = self.ui.get_widget('entry_name').get_text()
+        text_buffer = self.ui.get_widget('notes').get_buffer()
+        self.author.notes = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
+        self.author.rating = round( self.ui.get_widget('rating').get_value() )
         self.author.save()
         org_ids = set()
         self.organizations_model.foreach( lambda model, path, iter: org_ids.add( model.get_value( iter, 0 ) ) )
@@ -2456,13 +2466,14 @@ class PaperEditGUI:
         self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.edit_dialog.destroy() )
         self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
         self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
+        self.ui.get_widget('toolbutton_refresh_from_pdf').connect("clicked", lambda x: self.toolbutton_refresh_extracted_text_from_pdf() )
         self.ui.get_widget('entry_title').set_text( self.paper.title )
         self.ui.get_widget('entry_doi').set_text( self.paper.doi )
         self.ui.get_widget('textview_abstract').get_buffer().set_text( self.paper.abstract )
         self.ui.get_widget('textview_bibtex').get_buffer().set_text( self.paper.bibtex )
         self.ui.get_widget('textview_extracted_text').get_buffer().set_text( self.paper.extracted_text )
         self.ui.get_widget('filechooserbutton').set_filename( self.paper.get_full_text_filename() )
-        self.ui.get_widget('spinbutton_rating').set_value( self.paper.rating )
+        self.ui.get_widget('rating').set_value( self.paper.rating )
         self.ui.get_widget('spinbutton_read_count').set_value( self.paper.read_count )
 
         treeview_authors = self.ui.get_widget('treeview_authors')
@@ -2489,6 +2500,14 @@ class PaperEditGUI:
         self.init_citations_tab()
 
         self.edit_dialog.show()
+        
+    def toolbutton_refresh_extracted_text_from_pdf(self):
+        self.paper.extract_document_information_from_pdf()
+        self.authors_model.clear()
+        for author in self.paper.get_authors_in_order():
+            self.authors_model.append( ( author.id, author.name ) )
+        self.ui.get_widget('textview_extracted_text').get_buffer().set_text( self.paper.extracted_text )
+        self.ui.get_widget('entry_title').set_text( self.paper.title )
         
     def init_references_tab(self):
         treeview_references = self.ui.get_widget('treeview_references')
@@ -2573,7 +2592,7 @@ class PaperEditGUI:
         self.paper.abstract = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
         text_buffer = self.ui.get_widget('textview_bibtex').get_buffer()
         self.paper.bibtex = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
-        self.paper.rating = self.ui.get_widget('spinbutton_rating').get_value()
+        self.paper.rating = round( self.ui.get_widget('rating').get_value() )
         self.paper.read_count = self.ui.get_widget('spinbutton_read_count').get_value()
         new_file_name = self.ui.get_widget('filechooserbutton').get_filename()
         if new_file_name and new_file_name!=self.paper.get_full_text_filename():

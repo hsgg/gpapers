@@ -62,4 +62,22 @@ sqlite3_evolutions = [
         "INSERT INTO \"gPapers_paper\" SELECT \"id\",\"title\",\"doi\",\"source_id\",\"source_session\",\"source_pages\",\"abstract\",\"notes\",\"full_text\",\"full_text_md5\",\"extracted_text\",\"page_count\",\"rating\",\"read_count\",\"bibtex\",\"created\",\"updated\" FROM \"gPapers_paper_1337_TMP\";",
         "DROP TABLE \"gPapers_paper_1337_TMP\";",
     ],
+    [('fv1:-2070349988','fv1:2049392851'), # generated 2008-02-04 19:44:31.772013
+        "ALTER TABLE \"gPapers_author\" ADD COLUMN \"notes\" text NULL;",
+        "UPDATE \"gPapers_author\" SET \"notes\" = '' WHERE \"notes\" IS NULL ;",
+        "-- FYI: sqlite does not support changing columns, so we create a new \"gPapers_author\" and delete the old (ie, this could take a while if you have a lot of data)",
+        "ALTER TABLE \"gPapers_author\" RENAME TO \"gPapers_author_1337_TMP\";",
+        "CREATE TABLE \"gPapers_author\" (\n    \"id\" integer NOT NULL PRIMARY KEY,\n    \"name\" varchar(1024) NOT NULL,\n    \"location\" varchar(1024) NOT NULL,\n    \"department\" varchar(1024) NOT NULL,\n    \"notes\" text NOT NULL,\n    \"created\" datetime NOT NULL,\n    \"updated\" datetime NOT NULL\n)\n;",
+        "INSERT INTO \"gPapers_author\" SELECT \"id\",\"name\",\"location\",\"department\",\"notes\",\"created\",\"updated\" FROM \"gPapers_author_1337_TMP\";",
+        "DROP TABLE \"gPapers_author_1337_TMP\";",
+    ],
+    [('fv1:2049392851','fv1:-394475879'), # generated 2008-02-04 19:44:40.243905
+        "ALTER TABLE \"gPapers_author\" ADD COLUMN \"rating\" integer NULL;",
+        "UPDATE \"gPapers_author\" SET \"rating\" = 0 WHERE \"rating\" IS NULL ;",
+        "-- FYI: sqlite does not support changing columns, so we create a new \"gPapers_author\" and delete the old (ie, this could take a while if you have a lot of data)",
+        "ALTER TABLE \"gPapers_author\" RENAME TO \"gPapers_author_1337_TMP\";",
+        "CREATE TABLE \"gPapers_author\" (\n    \"id\" integer NOT NULL PRIMARY KEY,\n    \"name\" varchar(1024) NOT NULL,\n    \"location\" varchar(1024) NOT NULL,\n    \"department\" varchar(1024) NOT NULL,\n    \"notes\" text NOT NULL,\n    \"rating\" integer NOT NULL,\n    \"created\" datetime NOT NULL,\n    \"updated\" datetime NOT NULL\n)\n;",
+        "INSERT INTO \"gPapers_author\" SELECT \"id\",\"name\",\"location\",\"department\",\"notes\",\"rating\",\"created\",\"updated\" FROM \"gPapers_author_1337_TMP\";",
+        "DROP TABLE \"gPapers_author_1337_TMP\";",
+    ],
 ] # don't delete this comment! ## sqlite3_evolutions_end ##

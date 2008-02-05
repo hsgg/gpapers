@@ -64,6 +64,8 @@ class Author(models.Model):
     location = models.CharField(max_length='1024', blank=True)
     organizations = models.ManyToManyField(Organization)
     department = models.CharField(max_length='1024', blank=True)
+    notes = models.TextField(blank=True)
+    rating = models.IntegerField(default=0)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     
@@ -145,7 +147,7 @@ class Paper(models.Model):
             self.read_count = self.read_count + 1
             self.save()
 
-    def extract_document_information_from_pdf(self):
+    def extract_document_information_from_pdf(self, force_overwrite=False):
         """will overwrite the extracted_text and page_count fields, and the title if the title is empty"""
         if os.path.isfile( self.get_full_text_filename() ):
             content = []
@@ -153,9 +155,26 @@ class Paper(models.Model):
             pdf = pyPdf.PdfFileReader(file(self.get_full_text_filename(), "rb"))
             doc_info = pdf.getDocumentInfo()
             print 'doc_info', doc_info
-            if not self.title:
+            if force_overwrite or not self.title:
                 try: self.title = doc_info['/Title']
                 except: self.title = os.path.split(self.get_full_text_filename())[1]
+            if force_overwrite or self.authors.count()==0:
+                try:
+                    author_text = doc_info['/Author']
+                    print 'author_text', author_text
+                    if author_text.find(';')>0:
+                        author_list = author_text.split(';')
+                    else:
+                        author_list = author_text.split(',')
+                    if author_list:
+                        self.authors.clear()
+                        for author_name in author_list:
+                            author, created = Author.objects.get_or_create(name=author_name.strip())
+                            if created:
+                                author.save()
+                            self.authors.add(author)
+                except:
+                    pass
             # also has: doc_info['/Author'], doc_info['/ModDate'], doc_info['/CreationDate']
             # Iterate pages
             self.page_count = pdf.getNumPages()
