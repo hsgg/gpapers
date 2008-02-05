@@ -276,7 +276,7 @@ def import_citation(url, refresh_after=True):
             return paper
         
         # let's see if there's a pdf somewhere in here...
-        paper = import_unknown_citation(params)
+        paper = import_unknown_citation(params, params['url'])
         if paper and refresh_after: main_gui.refresh_middle_pane_search()
         if paper: return paper
         
@@ -642,7 +642,7 @@ def import_ieee_citation(params):
         if paper:
             paper.delete()
 
-def import_unknown_citation(params):
+def import_unknown_citation(params, orig_url):
     paper = None
 
     if params['data'].startswith('%PDF'):
@@ -657,11 +657,11 @@ def import_unknown_citation(params):
             if created:
                 #paper.title = filename
                 paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
-                paper.import_url = params['url']
+                paper.import_url = orig_url
                 paper.save()
                 print thread.get_ident(), 'imported paper =', filename
             else:
-                print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.authors.get_authors_in_order()
+                print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.get_authors_in_order()
         except:
             traceback.print_exc()
             if paper:
@@ -675,7 +675,7 @@ def import_unknown_citation(params):
             soup = BeautifulSoup.BeautifulSoup( params['data'] )
             for a in soup.findAll('a'):
                 if a['href'].endswith('.pdf'):
-                    paper = import_unknown_citation( openanything.fetch(a['href']) )
+                    paper = import_unknown_citation( openanything.fetch(a['href']), orig_url )
                     if paper: break
         except:
             traceback.print_exc()
@@ -704,7 +704,7 @@ def import_document( filename, data=None ):
             paper.save()
             print thread.get_ident(), 'imported paper =', filename
         else:
-            print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.authors.get_authors_in_order()
+            print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.get_authors_in_order()
     except:
         traceback.print_exc()
         if paper:
@@ -2121,8 +2121,6 @@ class MainGUI:
             params = openanything.fetch( 'http://citeseer.ist.psu.edu/cis?q=%s&cs=1&am=50' % defaultfilters.urlencode( search_text ) )
             if params['status']==200 or params['status']==302:
                 for html in params['data'][ params['data'].find('<!--RLS-->')+20 : params['data'].find('<!--RLE-->') ].split('<!--RIS-->'):
-                    print '============================================================='
-                    print html
                     node = BeautifulSoup.BeautifulStoneSoup( html.replace('<b>','').replace('</b>','') )
                     try:
                         title_authors_year = node.findAll('a')[0].string
@@ -2130,8 +2128,11 @@ class MainGUI:
                         title = html_strip( o.group(1) )
                         authors = html_strip( o.group(2) )
                         year = html_strip( o.group(3) )
+                        import_url = node.findAll('a')[0]['href']
                         try:
-                            paper = Paper.objects.get( title=title, authors__name__contains=authors.split(', ')[0] )
+                            papers = list( Paper.objects.filter( import_url=import_url ) )
+                            papers.extend( Paper.objects.filter( title=title, authors__name__contains=authors.split(', ')[0] ) )
+                            paper = papers[0]
                             paper_id = paper.id
                             if os.path.isfile( paper.get_full_text_filename() ):
                                 icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
@@ -2157,7 +2158,7 @@ class MainGUI:
                             0, # ranking
                             abstract, # abstract
                             icon, # icon
-                            node.findAll('a')[0]['href'], # import_url
+                            import_url, # import_url
                             doi, # doi
                             '', # created
                             '', # updated
