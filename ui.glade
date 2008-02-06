@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE glade-interface SYSTEM "glade-2.0.dtd">
-<!--Generated with glade3 3.4.0 on Mon Feb  4 13:30:36 2008 -->
+<!--Generated with glade3 3.4.0 on Wed Feb  6 11:11:39 2008 -->
 <glade-interface>
   <widget class="GtkWindow" id="main_window">
     <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
@@ -586,118 +586,15 @@
                             <property name="hscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
                             <property name="vscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
                             <child>
-                              <widget class="GtkImage" id="image4">
+                              <widget class="GtkViewport" id="viewport1">
                                 <property name="visible">True</property>
                                 <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                                <property name="has_tooltip">True</property>
-                                <property name="tooltip_markup">PDF Preview</property>
-                                <property name="stock">gtk-dnd</property>
-                                <property name="icon_size">5</property>
-                              </widget>
-                            </child>
-                          </widget>
-                          <packing>
-                            <property name="resize">False</property>
-                            <property name="shrink">True</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <widget class="GtkScrolledWindow" id="scrolledwindow6">
-                            <property name="visible">True</property>
-                            <property name="can_focus">True</property>
-                            <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                            <property name="hscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
-                            <property name="vscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
-                            <child>
-                              <widget class="GtkVBox" id="vbox4">
-                                <property name="visible">True</property>
-                                <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                                <property name="resize_mode">GTK_RESIZE_QUEUE</property>
                                 <child>
-                                  <widget class="GtkLabel" id="label1">
+                                  <widget class="GtkDrawingArea" id="pdf_preview">
                                     <property name="visible">True</property>
                                     <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                                    <property name="label" translatable="yes">Notes</property>
                                   </widget>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                  </packing>
-                                </child>
-                                <child>
-                                  <widget class="GtkVPaned" id="vpaned4">
-                                    <property name="visible">True</property>
-                                    <property name="can_focus">True</property>
-                                    <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                                    <child>
-                                      <widget class="GtkVBox" id="vbox7">
-                                        <property name="visible">True</property>
-                                        <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                                        <child>
-                                          <widget class="GtkScrolledWindow" id="scrolledwindow11">
-                                            <property name="visible">True</property>
-                                            <property name="can_focus">True</property>
-                                            <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                                            <property name="hscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
-                                            <property name="vscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
-                                            <child>
-                                              <widget class="GtkTreeView" id="treeview_bookmarks">
-                                                <property name="visible">True</property>
-                                                <property name="can_focus">True</property>
-                                                <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                                                <property name="headers_clickable">True</property>
-                                                <property name="rules_hint">True</property>
-                                              </widget>
-                                            </child>
-                                          </widget>
-                                        </child>
-                                        <child>
-                                          <widget class="GtkToolbar" id="toolbar_bookmarks">
-                                            <property name="visible">True</property>
-                                            <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                                            <property name="toolbar_style">GTK_TOOLBAR_ICONS</property>
-                                            <property name="icon_size">GTK_ICON_SIZE_MENU</property>
-                                          </widget>
-                                          <packing>
-                                            <property name="expand">False</property>
-                                            <property name="position">1</property>
-                                          </packing>
-                                        </child>
-                                      </widget>
-                                      <packing>
-                                        <property name="resize">False</property>
-                                        <property name="shrink">True</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <widget class="GtkScrolledWindow" id="scrolledwindow10">
-                                        <property name="visible">True</property>
-                                        <property name="can_focus">True</property>
-                                        <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                                        <property name="hscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
-                                        <property name="vscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
-                                        <child>
-                                          <widget class="GtkTextView" id="paper_notes">
-                                            <property name="visible">True</property>
-                                            <property name="sensitive">False</property>
-                                            <property name="can_focus">True</property>
-                                            <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                                            <property name="has_tooltip">True</property>
-                                            <property name="tooltip_markup">Enter notes about this paper here...</property>
-                                            <property name="pixels_above_lines">5</property>
-                                            <property name="wrap_mode">GTK_WRAP_WORD</property>
-                                            <property name="left_margin">5</property>
-                                            <property name="right_margin">5</property>
-                                          </widget>
-                                        </child>
-                                      </widget>
-                                      <packing>
-                                        <property name="resize">False</property>
-                                        <property name="shrink">True</property>
-                                      </packing>
-                                    </child>
-                                  </widget>
-                                  <packing>
-                                    <property name="position">1</property>
-                                  </packing>
                                 </child>
                               </widget>
                             </child>
@@ -707,16 +604,114 @@
                             <property name="shrink">True</property>
                           </packing>
                         </child>
+                        <child>
+                          <widget class="GtkVBox" id="vbox4">
+                            <property name="visible">True</property>
+                            <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                            <child>
+                              <widget class="GtkLabel" id="label1">
+                                <property name="visible">True</property>
+                                <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                                <property name="label" translatable="yes">Bookmarks / Notes</property>
+                              </widget>
+                              <packing>
+                                <property name="expand">False</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <widget class="GtkVPaned" id="vpaned4">
+                                <property name="visible">True</property>
+                                <property name="can_focus">True</property>
+                                <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                                <child>
+                                  <widget class="GtkVBox" id="vbox7">
+                                    <property name="visible">True</property>
+                                    <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                                    <child>
+                                      <widget class="GtkScrolledWindow" id="scrolledwindow6">
+                                        <property name="visible">True</property>
+                                        <property name="can_focus">True</property>
+                                        <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                                        <property name="hscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
+                                        <property name="vscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
+                                        <child>
+                                          <widget class="GtkTreeView" id="treeview_bookmarks">
+                                            <property name="visible">True</property>
+                                            <property name="can_focus">True</property>
+                                            <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                                            <property name="headers_clickable">True</property>
+                                            <property name="rules_hint">True</property>
+                                          </widget>
+                                        </child>
+                                      </widget>
+                                    </child>
+                                    <child>
+                                      <widget class="GtkToolbar" id="toolbar_bookmarks">
+                                        <property name="visible">True</property>
+                                        <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                                        <property name="toolbar_style">GTK_TOOLBAR_ICONS</property>
+                                        <property name="icon_size">GTK_ICON_SIZE_MENU</property>
+                                      </widget>
+                                      <packing>
+                                        <property name="expand">False</property>
+                                        <property name="position">1</property>
+                                      </packing>
+                                    </child>
+                                  </widget>
+                                  <packing>
+                                    <property name="resize">False</property>
+                                    <property name="shrink">True</property>
+                                  </packing>
+                                </child>
+                                <child>
+                                  <widget class="GtkScrolledWindow" id="scrolledwindow10">
+                                    <property name="visible">True</property>
+                                    <property name="can_focus">True</property>
+                                    <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                                    <property name="hscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
+                                    <property name="vscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
+                                    <child>
+                                      <widget class="GtkTextView" id="paper_notes">
+                                        <property name="visible">True</property>
+                                        <property name="sensitive">False</property>
+                                        <property name="can_focus">True</property>
+                                        <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                                        <property name="has_tooltip">True</property>
+                                        <property name="tooltip_markup">Enter notes about this paper here...</property>
+                                        <property name="pixels_above_lines">5</property>
+                                        <property name="wrap_mode">GTK_WRAP_WORD</property>
+                                        <property name="left_margin">5</property>
+                                        <property name="right_margin">5</property>
+                                      </widget>
+                                    </child>
+                                  </widget>
+                                  <packing>
+                                    <property name="resize">False</property>
+                                    <property name="shrink">True</property>
+                                  </packing>
+                                </child>
+                              </widget>
+                              <packing>
+                                <property name="position">1</property>
+                              </packing>
+                            </child>
+                          </widget>
+                          <packing>
+                            <property name="resize">False</property>
+                            <property name="shrink">True</property>
+                          </packing>
+                        </child>
                       </widget>
                     </child>
                     <child>
                       <widget class="GtkToolbar" id="toolbar1">
                         <property name="visible">True</property>
-                        <property name="sensitive">False</property>
                         <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                        <property name="icon_size">GTK_ICON_SIZE_MENU</property>
                         <child>
                           <widget class="GtkToolButton" id="toolbutton1">
                             <property name="visible">True</property>
+                            <property name="sensitive">False</property>
                             <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
                             <property name="stock_id">gtk-print</property>
                           </widget>
@@ -725,9 +720,10 @@
                           </packing>
                         </child>
                         <child>
-                          <widget class="GtkToolButton" id="toolbutton2">
+                          <widget class="GtkToolButton" id="button_move_previous_page">
                             <property name="visible">True</property>
                             <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                            <property name="is_important">True</property>
                             <property name="stock_id">gtk-go-back</property>
                           </widget>
                           <packing>
@@ -735,10 +731,10 @@
                           </packing>
                         </child>
                         <child>
-                          <widget class="GtkToolButton" id="toolbutton3">
+                          <widget class="GtkToolButton" id="button_move_next_page">
                             <property name="visible">True</property>
-                            <property name="sensitive">False</property>
                             <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                            <property name="is_important">True</property>
                             <property name="stock_id">gtk-go-forward</property>
                           </widget>
                           <packing>
@@ -746,26 +742,43 @@
                           </packing>
                         </child>
                         <child>
-                          <widget class="GtkSeparatorToolItem" id="separatortoolitem1">
+                          <widget class="GtkToolButton" id="button_zoom_in">
                             <property name="visible">True</property>
                             <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                            <property name="stock_id">gtk-zoom-in</property>
                           </widget>
                           <packing>
                             <property name="expand">False</property>
-                            <property name="homogeneous">False</property>
                           </packing>
                         </child>
                         <child>
-                          <widget class="GtkMenuToolButton" id="toolbutton4">
+                          <widget class="GtkToolButton" id="button_zoom_out">
                             <property name="visible">True</property>
                             <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                            <property name="is_important">True</property>
-                            <property name="label" translatable="yes">Notes</property>
-                            <property name="stock_id">gtk-edit</property>
+                            <property name="stock_id">gtk-zoom-out</property>
                           </widget>
                           <packing>
                             <property name="expand">False</property>
-                            <property name="homogeneous">False</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <widget class="GtkToolButton" id="button_zoom_best_fit">
+                            <property name="visible">True</property>
+                            <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                            <property name="stock_id">gtk-zoom-fit</property>
+                          </widget>
+                          <packing>
+                            <property name="expand">False</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <widget class="GtkToolButton" id="button_zoom_normal">
+                            <property name="visible">True</property>
+                            <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                            <property name="stock_id">gtk-zoom-100</property>
+                          </widget>
+                          <packing>
+                            <property name="expand">False</property>
                           </packing>
                         </child>
                       </widget>
@@ -776,7 +789,7 @@
                     </child>
                   </widget>
                   <packing>
-                    <property name="resize">False</property>
+                    <property name="resize">True</property>
                     <property name="shrink">True</property>
                   </packing>
                 </child>

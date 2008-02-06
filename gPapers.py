@@ -93,6 +93,26 @@ except:
     print 'could not import deseb [http://code.google.com/p/deseb/].  try running (from "%s"):' % RUN_FROM_DIR
     print '\tsvn checkout http://deseb.googlecode.com/svn/trunk/src/deseb'
     sys.exit()
+    
+try:
+    import cairo
+except:
+    traceback.print_exc()
+    print 'could not import pycairo [http://cairographics.org/pycairo/].  try running (from "%s"):' % RUN_FROM_DIR
+    print '\tsudo apt-get install python-cairo'
+
+try:
+    import poppler
+except:
+    traceback.print_exc()
+    print 'could not import python-poppler [https://code.launchpad.net/~poppler-python/poppler-python/].  try running (from "%s"):' % RUN_FROM_DIR
+    print "(you'll need libpoppler2, libpoppler-dev, libpoppler-glib2, libpoppler-glib-dev)"
+    print '\tbzr branch http://bazaar.launchpad.net/~poppler-python/poppler-python/poppler-0.6-experimental'
+    print '\tcd poppler-0.6-experimental'
+    print '\t./configure'
+    print '\tmake'
+    print '\tsudo make install'
+    sys.exit()
 
 
 import settings
@@ -768,6 +788,7 @@ class MainGUI:
         self.init_paper_information_pane()
         self.init_busy_notifier()
         self.init_bookmark_pane()
+        self.init_pdf_preview_pane()
         self.refresh_left_pane()  
         main_window.show()
         
@@ -891,6 +912,90 @@ class MainGUI:
         left_pane.enable_model_drag_dest( [LEFT_PANE_ADD_TO_PLAYLIST_DND_ACTION], gtk.gdk.ACTION_COPY )
         left_pane.connect('drag-data-received', self.handle_left_pane_drag_data_received_event)
         left_pane.connect("drag-motion", self.handle_left_pane_drag_motion_event)
+        
+    def init_pdf_preview_pane(self):
+        pdf_preview = self.ui.get_widget('pdf_preview')
+        self.pdf_preview = {}
+        self.pdf_preview['scale'] = None
+        pdf_preview.connect("expose-event", self.on_expose_pdf_preview)
+        self.ui.get_widget('button_move_previous_page').connect('clicked', lambda x: self.goto_pdf_page( self.pdf_preview['current_page_number']-1 ) )
+        self.ui.get_widget('button_move_next_page').connect('clicked', lambda x: self.goto_pdf_page( self.pdf_preview['current_page_number']+1 ) )
+        self.ui.get_widget('button_zoom_in').connect('clicked', lambda x: self.zoom_pdf_page( -1.2 ) )
+        self.ui.get_widget('button_zoom_out').connect('clicked', lambda x: self.zoom_pdf_page( -.8 ) )
+        self.ui.get_widget('button_zoom_normal').connect('clicked', lambda x: self.zoom_pdf_page( 1 ) )
+        self.ui.get_widget('button_zoom_best_fit').connect('clicked', lambda x: self.zoom_pdf_page( None ) )
+
+    def refresh_pdf_preview_pane(self):
+        pdf_preview = self.ui.get_widget('pdf_preview')
+        if self.displayed_paper:
+            self.pdf_preview['document'] = poppler.document_new_from_file ('file://'+ self.displayed_paper.get_full_text_filename(), None)
+            self.pdf_preview['n_pages'] = self.pdf_preview['document'].get_n_pages()
+            self.pdf_preview['scale'] = None
+            self.goto_pdf_page( self.pdf_preview['current_page_number'], new_doc=True )
+        else:
+            pdf_preview.set_size_request(0,0)
+            self.ui.get_widget('button_move_previous_page').set_sensitive( False )
+            self.ui.get_widget('button_move_next_page').set_sensitive( False )
+            self.ui.get_widget('button_zoom_out').set_sensitive( False )
+            self.ui.get_widget('button_zoom_in').set_sensitive( False )
+            self.ui.get_widget('button_zoom_normal').set_sensitive( False )
+            self.ui.get_widget('button_zoom_best_fit').set_sensitive( False )
+        pdf_preview.queue_draw()
+        
+    def goto_pdf_page(self, page_number, new_doc=False):
+        if self.displayed_paper:
+            if not new_doc and self.pdf_preview.get('current_page') and self.pdf_preview['current_page_number']==page_number:
+                return
+            if page_number<0: page_number = 0
+            pdf_preview = self.ui.get_widget('pdf_preview')
+            self.pdf_preview['current_page_number'] = page_number
+            self.pdf_preview['current_page'] = self.pdf_preview['document'].get_page( self.pdf_preview['current_page_number'] )
+            self.pdf_preview['width'], self.pdf_preview['height'] = self.pdf_preview['current_page'].get_size()
+            self.ui.get_widget('button_move_previous_page').set_sensitive( page_number>0 )
+            self.ui.get_widget('button_move_next_page').set_sensitive( page_number<self.pdf_preview['n_pages']-1 )
+            self.zoom_pdf_page( self.pdf_preview['scale'], redraw=False )
+            pdf_preview.queue_draw()
+        else:
+            self.ui.get_widget('button_move_previous_page').set_sensitive( False )
+            self.ui.get_widget('button_move_next_page').set_sensitive( False )
+
+    def zoom_pdf_page(self, scale, redraw=True):
+        """None==auto-size, negative means relative, positive means fixed"""
+        if self.displayed_paper:
+            if redraw and self.pdf_preview.get('current_page') and self.pdf_preview['scale']==scale:
+                return
+            pdf_preview = self.ui.get_widget('pdf_preview')
+            auto_scale = (pdf_preview.get_parent().get_allocation().width-2.0) / self.pdf_preview['width']
+            if scale==None:
+                scale = auto_scale
+            else:
+                if scale<0:
+                    if self.pdf_preview['scale']==None: self.pdf_preview['scale'] = auto_scale
+                    scale = self.pdf_preview['scale'] = self.pdf_preview['scale'] * -scale
+                else:
+                    self.pdf_preview['scale'] = scale
+            pdf_preview.set_size_request(int(self.pdf_preview['width']*scale), int(self.pdf_preview['height']*scale))
+            self.ui.get_widget('button_zoom_out').set_sensitive( scale>0.3 )
+            self.ui.get_widget('button_zoom_in').set_sensitive( True )
+            self.ui.get_widget('button_zoom_normal').set_sensitive( True )
+            self.ui.get_widget('button_zoom_best_fit').set_sensitive( True )
+            if redraw: pdf_preview.queue_draw()
+            return scale
+        else:
+            pass
+        
+    def on_expose_pdf_preview(self, widget, event):
+        if not self.displayed_paper or not self.pdf_preview.get('current_page'): return
+        cr = widget.window.cairo_create()
+        cr.set_source_rgb(1, 1, 1)
+        scale = self.pdf_preview['scale']
+        if scale==None:
+            scale = (self.ui.get_widget('pdf_preview').get_parent().get_allocation().width-2.0) / self.pdf_preview['width']
+        if scale != 1:
+            cr.scale(scale, scale)
+        cr.rectangle(0, 0, self.pdf_preview['width'], self.pdf_preview['height'])
+        cr.fill()
+        self.pdf_preview['current_page'].render(cr)
         
     def init_my_library_filter_pane(self):
         
@@ -1601,6 +1706,9 @@ class MainGUI:
                 button.connect( 'clicked', lambda x: self.create_playlist( selected_valid_paper_ids ) )
                 paper_information_toolbar.insert( button, -1 )
 
+        self.pdf_preview['current_page_number'] = 0
+        self.refresh_pdf_preview_pane()
+
         paper_information_toolbar.show_all()
         
     def update_bookmark_pane_from_paper(self, paper):
@@ -1613,7 +1721,7 @@ class MainGUI:
                 except: title = str(bookmark.notes)
                 self.treeview_bookmarks_model.append( (bookmark.id, bookmark.page, title, bookmark.updated.strftime(DATE_FORMAT), len(str(bookmark.notes).split())) )
         self.select_bookmark_pane_item()
-            
+        
     def select_bookmark_pane_item(self, selection=None):
         if selection==None:
             selection = self.ui.get_widget('treeview_bookmarks').get_selection()
@@ -1632,8 +1740,10 @@ class MainGUI:
             self.update_paper_notes_handler_id = None
         
         if selected_bookmark_id!=-1:
-                paper_notes.get_buffer().set_text( Bookmark.objects.get(id=selected_bookmark_id).notes )
+                bookmark = Bookmark.objects.get(id=selected_bookmark_id)
+                paper_notes.get_buffer().set_text( bookmark.notes )
                 paper_notes.set_property('sensitive', True)
+                self.goto_pdf_page( bookmark.page )
                 self.update_paper_notes_handler_id = paper_notes.get_buffer().connect('changed', self.update_bookmark_notes, selected_bookmark_id )
         elif self.displayed_paper:
                 paper_notes.get_buffer().set_text( self.displayed_paper.notes )
@@ -1646,14 +1756,14 @@ class MainGUI:
         
         if self.displayed_paper:
             button = gtk.ToolButton(gtk.STOCK_ADD)
-            button.set_tooltip(gtk.Tooltips(), 'Add a new bookmark...')
-            button.connect( 'clicked', lambda x, paper: Bookmark.objects.create(paper=paper, page=0).save() or self.select_middle_top_pane_item( self.ui.get_widget('middle_top_pane').get_selection() ), self.displayed_paper )
+            button.set_tooltip(gtk.Tooltips(), 'Add a new page note...')
+            button.connect( 'clicked', lambda x, paper: Bookmark.objects.create(paper=paper, page=self.pdf_preview['current_page_number']).save() or self.update_bookmark_pane_from_paper( self.displayed_paper ), self.displayed_paper )
             button.show()
             toolbar_bookmarks.insert( button, -1 )
 
         if selected_bookmark_id!=-1:
             button = gtk.ToolButton(gtk.STOCK_DELETE)
-            button.set_tooltip(gtk.Tooltips(), 'Delete this bookmark...')
+            button.set_tooltip(gtk.Tooltips(), 'Delete this page note...')
             button.connect( 'clicked', lambda x: self.delete_bookmark( selected_bookmark_id )  )
             button.show()
             toolbar_bookmarks.insert( button, -1 )
@@ -1730,7 +1840,7 @@ class MainGUI:
         dialog.destroy()
         if response == gtk.RESPONSE_YES:
             Bookmark.objects.get(id=id).delete()
-            self.select_middle_top_pane_item( self.ui.get_widget('middle_top_pane').get_selection() )
+            self.update_bookmark_pane_from_paper( self.displayed_paper )
     
     def delete_source(self, id):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
