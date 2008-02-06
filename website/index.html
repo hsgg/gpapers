@@ -1,15 +1,27 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
 <html>
 <head>
-<title>gPapers - iTunes for your PDFs</title>
+<title>gPapers - "iTunes" for PDFs</title>
 </head>
 <style>
 
 body {
-	width: 682px;
+	width: 780px;
+}
+h1 { 
+	margin-left: 10px;
+}
+h2 { 
+	margin-left: 10px;
+}
+h3 { 
+	margin-left: 10px;
 }
 p { 
-	margin: 16px;
+	margin-top: 16px;
+	margin-bottom: 16px;
+	margin-right: 16px;
+	margin-left: 25px;
 }
 
 </style>
@@ -22,7 +34,7 @@ p {
 <h1>Welcome...</h1>
 
 <p>
-This is <i>gPapers</i>, the open-sourced, <a href="http://www.gnome.org/">Gnome based</a> digital library manager.
+This is <b>gPapers</b>, the open-sourced, <a href="http://www.gnome.org/">Gnome based</a> digital library manager.
 Think of it as an <a href="http://www.apple.com/itunes/">iTunes</a> for your PDFs.
 </p>
 
@@ -32,24 +44,14 @@ You read a lot during your PhD, and keeping printouts on your desk in a giant st
 </p>
 
 <h2>Download / Install</h2>
-<p>
-No nice packages / installer yet, sorry.  You'll need the following libraries:</p>
-<ul>
-<li>Ubuntu: <code>sudo apt-get install python python-glade2 python-gnome2 python-gconf python-sqlite3</code></li>
-<li>Debian: <code>sudo apt-get install python python-glade2 python-gnome2 python-sqlite3</code></li>
-<li>Redhat: <code>sudo yum install pygtk2 gnome-python2-gconf pygtk2-libglade python-sqlite3</code></li>
-</ul>
-<p><i>Note:</i> If your distro doesn't have <code>python-sqlite3</code>, you can use <code>pysqlite2</code>.</p>
-<p>Now run:</p>
-<ol>
-<li><code>svn checkout http://gpapers.googlecode.com/svn/trunk/ gpapers</code></li>
-<li><code>svn co http://code.djangoproject.com/svn/django/trunk/django gpapers/django</code></li>
-<li><code>svn checkout http://deseb.googlecode.com/svn/trunk/src/deseb gpapers/deseb</code></li>
-</ol>
-<p><i>Note:</i> The last two lines aren't necessary if you have recent versions of <a href="http://www.djangoproject.com/">django</a> and <a href="http://code.google.com/p/deseb/">deseb</a> already installed.</p>
+<p>I <i>highly</i> recommend <a href="http://www.ubuntu.com/">Ubuntu 7.10 (Gutsy Gibbon)</a>, as this program uses 
+<a href="http://www.pygtk.org/">pygtk</a> v2.12 and the experimental branch of the very new 
+<a href="https://code.launchpad.net/~poppler-python/poppler-python/poppler-0.6-experimental">python-poppler</a> library (which 
+you have to compile yourself). If this doesn't scare you, click here:</p>
+<p><a href="http://code.google.com/p/gpapers/wiki/Installation">Installation Instructions (Linux)</a></p>
 
 <h3>Updates</h3>
-<p>From your install directory, run: <code>svn update</code></p>
+<p>There are no formal releases, just whatever is in subversion.  From your install directory, run: <code>svn update</code></p>
 
 <h2>Links</h2>
 <ul>
@@ -58,7 +60,7 @@ No nice packages / installer yet, sorry.  You'll need the following libraries:</
 <li><a href="http://code.google.com/p/gpapers/issues/entry">Report Bugs Here</a></li>
 </ul>
 
-<p>PS: Thanks to <a href="http://mekentosj.com/papers/">mekentosj</a> for the orignal idea, and recognizing the need.</p>
+<p>PS: Thanks to <a href="http://ipapers.sourceforge.net/iPapers.html">iPapers</a> and <a href="http://mekentosj.com/papers/">mekentosj</a> for the orignal idea, and recognizing the need.</p>
 
 <center style="font-size:smaller;">Copyright &copy; 2008 <a href="http://kered.org">Derek Anderson</a></center>
 
