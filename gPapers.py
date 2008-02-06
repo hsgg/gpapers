@@ -1468,6 +1468,8 @@ class MainGUI:
                 self.paper_information_pane_model.append(( '<b>DOI:</b>', liststore[rows[0]][9] ,))
             if liststore[rows[0]][13]:
                 self.paper_information_pane_model.append(( '<b>PubMed:</b>', liststore[rows[0]][13] ,)) 
+            if liststore[rows[0]][8]:
+                self.paper_information_pane_model.append(( '<b>Import URL:</b>', liststore[rows[0]][8] ,)) 
             status = []
             if paper and os.path.isfile( paper.get_full_text_filename() ):
                 status.append( 'Full text saved in local library.' )
