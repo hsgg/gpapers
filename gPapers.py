@@ -788,7 +788,8 @@ def import_document( filename, data=None ):
         if created:
             #paper.title = filename
             paper.save_full_text_file( defaultfilters.slugify(os.path.split(filename)[1].replace('.pdf',''))+'.pdf', data )
-            paper.import_url = params['url']
+            if not data:
+                paper.import_url = params['url']
             paper.save()
             print thread.get_ident(), 'imported paper =', filename
         else:
