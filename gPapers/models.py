@@ -1,6 +1,9 @@
-import md5, os, traceback
+import md5, os, re, traceback
 from django.db import models
 import desktop, pyPdf
+
+
+p_doi = re.compile( 'doi *: *(10.[a-z0-9]+/[a-z0-9.]+)', re.IGNORECASE )
 
 
 class Publisher(models.Model):
@@ -186,6 +189,10 @@ class Paper(models.Model):
             stdin, stdout = os.popen4( 'ps2txt "%s"' % self.get_full_text_filename() )
             for line in stdout:
                 content.append(line)
+                try:
+                    self.doi = p_doi.search(line).group(1)
+                    print self.doi
+                except: pass
             
             self.extracted_text = ''.join( content )
         else:

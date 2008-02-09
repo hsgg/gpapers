@@ -124,6 +124,7 @@ from gPapers.models import *
 
 
 p_whitespace = re.compile( '[\s]+')
+p_doi = re.compile( 'doi *: *(10.[a-z0-9]+/[a-z0-9.]+)', re.IGNORECASE )
 
 def substitute_entity(match):
     ent = match.group(2)
@@ -272,6 +273,64 @@ def import_documents_via_filenames(filenames):
         import_document( filename, data )
     main_gui.refresh_middle_pane_search()
     
+def get_or_create_paper_via( id=None, doi=None, pubmed_id=None, import_url=None, title=None, full_text_md5=None ):
+    """tries to look up a paper by various forms of id, from most specific to least"""
+    print id, doi, pubmed_id, import_url, title, full_text_md5
+    paper = None
+    created = False
+    if id>=0:
+        try: paper = Paper.objects.get(id=id)
+        except: pass
+        
+    if doi:
+        if paper:
+            if not paper.doi:
+                paper.doi = doi
+        else:
+            try: paper = Paper.objects.get(doi=doi)
+            except: pass
+    
+    if pubmed_id:
+        if paper:
+            if not paper.pubmed_id:
+                paper.pubmed_id = pubmed_id
+        else:
+            try: paper = Paper.objects.get(pubmed_id=pubmed_id)
+            except: pass
+    
+    if import_url:
+        if paper:
+            if not paper.import_url:
+                paper.import_url = import_url
+        else:
+            try: paper = Paper.objects.get(import_url=import_url)
+            except: pass
+    
+    if full_text_md5:
+        if not paper:
+            try: paper = Paper.objects.get(full_text_md5=full_text_md5)
+            except: pass
+    
+    if title:
+        if paper:
+            if not paper.title:
+                paper.title = title
+        else:
+            try: paper = Paper.objects.get(title=title)
+            except: pass
+    
+    if not paper:
+        # it looks like we haven't seen this paper before...
+        if title==None: title = ''
+        if doi==None: doi = ''
+        if pubmed_id==None: pubmed_id = ''
+        if import_url==None: import_url = ''
+        paper = Paper.objects.create( doi=doi, pubmed_id=pubmed_id, import_url=import_url, title=title )
+        created = True
+        
+    return paper, created
+    
+    
 def import_citation_via_middle_top_pane_row(row):
     # id, authors, title, journal, year, rating, abstract, icon, import_url, doi, created, updated, empty_str, pubmed_id
     
@@ -285,26 +344,7 @@ def import_citation_via_middle_top_pane_row(row):
     doi = row[9]
     pubmed_id = row[13]
     
-    paper = None
-    if not paper:
-        try: paper = Paper.objects.get(id=paper_id)
-        except: pass
-    if not paper:
-        try: paper = Paper.objects.get(doi=doi)
-        except: pass
-    if not paper:
-        try: paper = Paper.objects.get(pubmed_id=pubmed_id)
-        except: pass
-    if not paper:
-        try: paper = Paper.objects.get(import_url=import_url)
-        except: pass
-    if not paper:
-        try: paper = Paper.objects.get(title=title)
-        except: pass
-        
-    if not paper:
-        # it looks like we haven't seen this paper before...
-        paper = Paper.objects.create()
+    paper, created = get_or_create_paper_via( id=paper_id, doi=doi, pubmed_id=pubmed_id, import_url=import_url, title=title )
         
     if title: paper.title = title
     if abstract: paper.abstract = abstract
@@ -486,7 +526,7 @@ def import_acm_citation(params, paper=None):
                 paper.doi = doi
                 paper.save()
             else:
-                paper, created = Paper.objects.get_or_create(
+                paper, created = get_or_create_paper_via(
                     title = html_strip(''.join(title)),
                     doi = doi,
                 )
@@ -653,7 +693,7 @@ def import_ieee_citation(params, paper=None):
         print soup.find('span', attrs={'class':'headNavBlueXLarge2'})
         
         if not paper:
-            paper, created = Paper.objects.get_or_create(
+            paper, created = get_or_create_paper_via(
                 title = html_strip( str(soup.find('title').string).replace('IEEEXplore#','') ),
                 doi = re.search( 'Digital Object Identifier: ([a-zA-Z0-9./]*)', params['data'] ).group(1),
             )
@@ -725,6 +765,9 @@ def import_ieee_citation(params, paper=None):
         if paper:
             paper.delete()
 
+p_html_a = re.compile( "<a [^>]+>" , re.IGNORECASE)
+p_html_a_href = re.compile( '''href *= *['"]([^'^"]+)['"]''' , re.IGNORECASE)
+
 def import_unknown_citation(params, orig_url, paper=None):
 
     if params['data'].startswith('%PDF'):
@@ -737,7 +780,7 @@ def import_unknown_citation(params, orig_url, paper=None):
             
             if not paper:
                 md5_hexdigest = get_md5_hexdigest_from_data( data )
-                paper, created = Paper.objects.get_or_create( full_text_md5=md5_hexdigest )
+                paper, created = get_or_create_paper_via( full_text_md5=md5_hexdigest )
                 if created:
                     #paper.title = filename
                     paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
@@ -760,10 +803,26 @@ def import_unknown_citation(params, orig_url, paper=None):
     
         # see 
         try:
-            soup = BeautifulSoup.BeautifulSoup( params['data'] )
-            for a in soup.findAll('a'):
-                if a['href'].endswith('.pdf'):
-                    paper = import_unknown_citation( openanything.fetch(a['href']), orig_url, paper=paper )
+#            soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<!--//-->','').replace('<![CDATA[//>','').replace('<!]]>','') )
+#            print soup.prettify()
+            web_dir_root = params['url'][: params['url'].find('/',8) ]
+            web_dir_current = params['url'][: params['url'].rfind('/') ]
+            #for a in soup.findAll('a'):
+            for a in p_html_a.findall( params['data'] ):
+                try: href = p_html_a_href.search(a).group(1)
+                except:
+                    print thread.get_ident(), 'couldn\'t figure out href from link:', a
+                    continue
+                if href.find('?')>0:
+                    href = href[ : href.find('?') ]
+                if not href.lower().startswith('http'):
+                    if href.startswith('/'):
+                        href = web_dir_root + href
+                    else:
+                        href = web_dir_current +'/'+ href
+                if href.lower().endswith('.pdf'):
+                    print "href", href
+                    paper = import_unknown_citation( openanything.fetch(href), orig_url, paper=paper )
                     if paper: break
         except:
             traceback.print_exc()
@@ -784,7 +843,7 @@ def import_document( filename, data=None ):
     try:
         print thread.get_ident(), 'importing paper =', filename
         md5_hexdigest = get_md5_hexdigest_from_data( data )
-        paper, created = Paper.objects.get_or_create( full_text_md5=md5_hexdigest )
+        paper, created = get_or_create_paper_via( full_text_md5=md5_hexdigest )
         if created:
             #paper.title = filename
             paper.save_full_text_file( defaultfilters.slugify(os.path.split(filename)[1].replace('.pdf',''))+'.pdf', data )
@@ -1020,10 +1079,14 @@ class MainGUI:
             pdf_preview = self.ui.get_widget('pdf_preview')
             self.pdf_preview['current_page_number'] = page_number
             self.pdf_preview['current_page'] = self.pdf_preview['document'].get_page( self.pdf_preview['current_page_number'] )
-            self.pdf_preview['width'], self.pdf_preview['height'] = self.pdf_preview['current_page'].get_size()
-            self.ui.get_widget('button_move_previous_page').set_sensitive( page_number>0 )
-            self.ui.get_widget('button_move_next_page').set_sensitive( page_number<self.pdf_preview['n_pages']-1 )
-            self.zoom_pdf_page( self.pdf_preview['scale'], redraw=False )
+            if self.pdf_preview['current_page']:
+                self.pdf_preview['width'], self.pdf_preview['height'] = self.pdf_preview['current_page'].get_size()
+                self.ui.get_widget('button_move_previous_page').set_sensitive( page_number>0 )
+                self.ui.get_widget('button_move_next_page').set_sensitive( page_number<self.pdf_preview['n_pages']-1 )
+                self.zoom_pdf_page( self.pdf_preview['scale'], redraw=False )
+            else:
+                self.ui.get_widget('button_move_previous_page').set_sensitive( False )
+                self.ui.get_widget('button_move_next_page').set_sensitive( False )
             pdf_preview.queue_draw()
         else:
             self.ui.get_widget('button_move_previous_page').set_sensitive( False )
