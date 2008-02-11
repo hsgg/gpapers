@@ -48,7 +48,7 @@ def latex2unicode(s):
 
 def get_or_create_paper_via( id=None, doi=None, pubmed_id=None, import_url=None, title=None, full_text_md5=None ):
     """tries to look up a paper by various forms of id, from most specific to least"""
-    print id, doi, pubmed_id, import_url, title, full_text_md5
+    #print id, doi, pubmed_id, import_url, title, full_text_md5
     paper = None
     created = False
     if id>=0:
@@ -112,10 +112,8 @@ def import_bibtex_from_html( paper, html ):
     match = p_bibtex.search( html )
     if match:
         
-        print 'bibtex', match.group(1)
         bibtex_lines = [ x.strip() for x in match.group(1).split('\n') ]
         bibtex = {}
-        print 'bibtex_lines', bibtex_lines
         
         for x in bibtex_lines:
             i = x.find('=')
@@ -132,10 +130,15 @@ def import_bibtex_from_html( paper, html ):
         # create our paper if not provided for us
         if not paper:
             paper, created = get_or_create_paper_via( doi=bibtex.get('doi'), title=bibtex.get('title') )
+            if created:
+                print thread.get_ident(), 'creating paper:', paper
+            else:
+                print thread.get_ident(), 'updating paper:', paper
             
-        paper.doi = bibtex.get('doi','')
-        paper.title = bibtex.get('title','')
-        paper.source_pages = bibtex.get('pages','')
+        if bibtex.get('doi'): paper.doi = bibtex.get('doi','')
+        if bibtex.get('title'): paper.title = bibtex.get('title','')
+        if bibtex.get('source_pages'): paper.source_pages = bibtex.get('pages','')
+        if bibtex.get('abstract'): paper.abstract = bibtex.get('abstract','')
     
         # search for author information
         if bibtex.get('author') and paper.authors.count()==0:

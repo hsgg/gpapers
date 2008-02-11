@@ -264,9 +264,13 @@ def fetch_citations_via_references(references):
     print 'trying to fetch:', references
     t = thread.start_new_thread( import_citations_via_references, (references,) )
 
+def fetch_citations_via_bibtexs(bibtexs):
+    print 'trying to fetch bibtexs...'
+    t = thread.start_new_thread( import_citations_via_bibtexs, (bibtexs,) )
+
 def fetch_documents_via_filenames(filenames):
     print 'trying to fetch:', filenames
-    t = thread.start_new_thread( import_documents_via_filenames, (filenames,) )
+    t = thread.start_new_thread( import_documents_via_filenames, (bibtexs,) )
     
 def import_citations(urls):
     for url in urls:
@@ -290,6 +294,26 @@ def import_documents_via_filenames(filenames):
         data = open(filename,'r').read()
         import_document( filename, data )
     main_gui.refresh_middle_pane_search()    
+
+def import_citations_via_bibtexs(bibtexs):
+    
+    a_bibtex = []
+    
+    for line in bibtexs.split('\n'):
+        if not line: continue
+        if len(a_bibtex) and line.strip().startswith('@'):
+            # found new bibtex start
+            import_citation_via_bibtex( '\n'.join(a_bibtex) )
+            a_bibtex = []
+        a_bibtex.append(line)
+    if len(a_bibtex):
+        # import last found bibtex
+        import_citation_via_bibtex( '\n'.join(a_bibtex) )
+    
+    main_gui.refresh_middle_pane_search()    
+
+def import_citation_via_bibtex(bibtex):
+    importer.import_bibtex_from_html(None, bibtex)
     
 def import_citation_via_middle_top_pane_row(row):
     # id, authors, title, journal, year, rating, abstract, icon, import_url, doi, created, updated, empty_str, pubmed_id
@@ -803,6 +827,23 @@ class MainGUI:
             fetch_documents_via_filenames( dialog.get_filenames() )
         dialog.destroy()
     
+    def import_bibtex(self, o):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
+        #dialog.connect('response', lambda x,y: dialog.destroy())
+        dialog.set_markup('<b>Import BibTex...</b>\n\nEnter the BibTex entry (or entries) you would like to import:')
+        entry = gtk.TextView()
+        scrolledwindow = gtk.ScrolledWindow()
+        scrolledwindow.add(entry)
+        scrolledwindow.set_property( 'height-request', 300 )
+        dialog.vbox.pack_start(scrolledwindow)
+        dialog.set_default_response(gtk.RESPONSE_OK)
+        dialog.show_all()
+        response = dialog.run()
+        if response == gtk.RESPONSE_OK:
+            text_buffer = entry.get_buffer()
+            fetch_citations_via_bibtexs( text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() ) )
+        dialog.destroy()
+    
     def __init__(self):
         gnome.init(PROGRAM, VERSION)
         self.ui = gtk.glade.XML(RUN_FROM_DIR + 'ui.glade')
@@ -867,6 +908,7 @@ class MainGUI:
         self.ui.get_widget('menuitem_import_file').connect('activate', self.import_file)
         self.ui.get_widget('menuitem_preferences').connect('activate', lambda x: PreferencesGUI())
         self.ui.get_widget('menuitem_import_test_urls').connect('activate', lambda x: fetch_citations_via_urls( TEST_IMPORT_URLS ) )
+        self.ui.get_widget('menuitem_import_bibtex').connect('activate', self.import_bibtex)
         
     def init_search_box(self):
         thread.start_new_thread( self.watch_middle_pane_search, () )
