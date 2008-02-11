@@ -121,6 +121,24 @@ from django.template import defaultfilters
 os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 from django.db.models import Q
 from gPapers.models import *
+import importer
+
+
+
+TEST_IMPORT_URLS = [
+    'http://citeseer.ist.psu.edu/mihalcea01highly.html',
+    'http://www.nature.com/nature/journal/v451/n7179/abs/nature06510.html;jsessionid=5AC0431F416BEBC6E380068E0F75B372',
+    'http://portal.acm.org/citation.cfm?id=1073445.1073467&coll=GUIDE&dl=ACM&CFID=15957474&CFTOKEN=97039722#',
+    'http://portal.acm.org/citation.cfm?id=1072064.1072107&coll=GUIDE&dl=ACM&CFID=15957143&CFTOKEN=75864759#',
+    'http://portal.acm.org/citation.cfm?id=1072228.1072395&coll=GUIDE&dl=ACM&CFID=15944519&CFTOKEN=43144202#',
+    'http://citeseer.ist.psu.edu/310506.html',
+    'http://portal.acm.org/citation.cfm?id=1073012.1073049&coll=GUIDE&dl=ACM&CFID=54110344&CFTOKEN=66049449',
+    'http://www.ncbi.nlm.nih.gov/pubmed/18260159?ordinalpos=1&itool=EntrezSystem2.PEntrez.Pubmed.Pubmed_ResultsPanel.Pubmed_RVDocSum',
+    'http://ieeexplore.ieee.org/search/srchabstract.jsp?arnumber=4252372&isnumber=4252351&punumber=16&k2dockey=4252372@ieeejrns&query=%28moldovan%29%3Cin%3Emetadata&pos=4',
+]
+
+
+
 
 
 p_whitespace = re.compile( '[\s]+')
@@ -271,65 +289,7 @@ def import_documents_via_filenames(filenames):
     for filename in filenames:
         data = open(filename,'r').read()
         import_document( filename, data )
-    main_gui.refresh_middle_pane_search()
-    
-def get_or_create_paper_via( id=None, doi=None, pubmed_id=None, import_url=None, title=None, full_text_md5=None ):
-    """tries to look up a paper by various forms of id, from most specific to least"""
-    print id, doi, pubmed_id, import_url, title, full_text_md5
-    paper = None
-    created = False
-    if id>=0:
-        try: paper = Paper.objects.get(id=id)
-        except: pass
-        
-    if doi:
-        if paper:
-            if not paper.doi:
-                paper.doi = doi
-        else:
-            try: paper = Paper.objects.get(doi=doi)
-            except: pass
-    
-    if pubmed_id:
-        if paper:
-            if not paper.pubmed_id:
-                paper.pubmed_id = pubmed_id
-        else:
-            try: paper = Paper.objects.get(pubmed_id=pubmed_id)
-            except: pass
-    
-    if import_url:
-        if paper:
-            if not paper.import_url:
-                paper.import_url = import_url
-        else:
-            try: paper = Paper.objects.get(import_url=import_url)
-            except: pass
-    
-    if full_text_md5:
-        if not paper:
-            try: paper = Paper.objects.get(full_text_md5=full_text_md5)
-            except: pass
-    
-    if title:
-        if paper:
-            if not paper.title:
-                paper.title = title
-        else:
-            try: paper = Paper.objects.get(title=title)
-            except: pass
-    
-    if not paper:
-        # it looks like we haven't seen this paper before...
-        if title==None: title = ''
-        if doi==None: doi = ''
-        if pubmed_id==None: pubmed_id = ''
-        if import_url==None: import_url = ''
-        paper = Paper.objects.create( doi=doi, pubmed_id=pubmed_id, import_url=import_url, title=title )
-        created = True
-        
-    return paper, created
-    
+    main_gui.refresh_middle_pane_search()    
     
 def import_citation_via_middle_top_pane_row(row):
     # id, authors, title, journal, year, rating, abstract, icon, import_url, doi, created, updated, empty_str, pubmed_id
@@ -344,7 +304,7 @@ def import_citation_via_middle_top_pane_row(row):
     doi = row[9]
     pubmed_id = row[13]
     
-    paper, created = get_or_create_paper_via( id=paper_id, doi=doi, pubmed_id=pubmed_id, import_url=import_url, title=title )
+    paper, created = importer.get_or_create_paper_via( id=paper_id, doi=doi, pubmed_id=pubmed_id, import_url=import_url, title=title )
         
     if title: paper.title = title
     if abstract: paper.abstract = abstract
@@ -403,7 +363,7 @@ def import_citation(url, paper=None, refresh_after=True):
     gtk.gdk.threads_enter()
     error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
     error.connect('response', lambda x,y: error.destroy())
-    error.set_markup('<b>No Paper Found</b>\n\nThe given URL does not appear to contain or link to any PDF files. (perhaps you have it buy it?) Try downloading the file and adding it using "File &gt;&gt; Import..."')
+    error.set_markup('<b>No Paper Found</b>\n\nThe given URL does not appear to contain or link to any PDF files. (perhaps you have it buy it?) Try downloading the file and adding it using "File &gt;&gt; Import..."\n\n%s' % pango_excape(url))
     error.run()
     gtk.gdk.threads_leave()
     if main_gui.active_threads.has_key( thread.get_ident() ):
@@ -425,6 +385,7 @@ def import_acm_citation(params, paper=None):
     print thread.get_ident(), 'downloading acm citation:', params['url']
     try:
         print thread.get_ident(), 'parsing...'
+        
         soup = BeautifulSoup.BeautifulSoup( params['data'] )
         
         title = []
@@ -512,32 +473,21 @@ def import_acm_citation(params, paper=None):
         if not paper:
             if full_text_data:
                 md5_hexdigest = get_md5_hexdigest_from_data( full_text_data )
-                papers = Paper.objects.filter( full_text_md5=md5_hexdigest )
             else:
-                papers = []
-
-            if len(papers):
-                print thread.get_ident(), 'paper already imported'
-                if not should_we_reimport_paper(papers[0]):
-                    return
-                created = False
-                paper = papers[0]
-                paper.title = html_strip(''.join(title))
-                paper.doi = doi
+                md5_hexdigest = None
+            paper, created = importer.get_or_create_paper_via(
+                title = html_strip(''.join(title)),
+                doi = doi,
+                full_text_md5 = md5_hexdigest,
+            )
+            if created:
+                if full_text_filename and full_text_data:
+                    paper.save_full_text_file( full_text_filename, full_text_data )
                 paper.save()
-            else:
-                paper, created = get_or_create_paper_via(
-                    title = html_strip(''.join(title)),
-                    doi = doi,
-                )
-                if created:
-                    if full_text_filename and full_text_data:
-                        paper.save_full_text_file( full_text_filename, full_text_data )
-                    paper.save()
-                else: 
-                    print thread.get_ident(), 'paper already imported'
-                    if not should_we_reimport_paper(paper):
-                        return
+            else: 
+                print thread.get_ident(), 'paper already imported'
+                if not should_we_reimport_paper(paper):
+                    return
         else:
             paper.title = html_strip(''.join(title))
             paper.doi = doi
@@ -547,36 +497,8 @@ def import_acm_citation(params, paper=None):
             
 
         paper.import_url = params['url']
-        try: publisher_name = html_strip( soup.find('div', attrs={'class':'publishers'}).contents[0] )
-        except: publisher_name = None
-        if publisher_name:
-            publisher, created = Publisher.objects.get_or_create( name=publisher_name )
-            if created: publisher.save()
-        else:
-            publisher = None
-            
-        node = soup.find('strong', text='Source').parent.parent.nextSibling.nextSibling
-        source, created = Source.objects.get_or_create(
-            name = html_strip(node.contents[1].string),
-            issue = html_strip(node.contents[6].string),
-            location = html_strip(node.contents[11].string),
-            publication_date = date( int( html_strip( re.search( 'Year of Publication:(.*)', params['data'] ).group(1) ) ), 1, 1 ),
-#            publication_date = date( int( html_strip(node.contents[17].string).replace('Year of Publication: ','') ), 1, 1 ),
-            publisher = publisher,
-        )
-        if created:
-            for n in node.contents:
-                try:
-                    if n.name=='a' and n['href'].startswith('toc.cfm'):
-                        source.acm_toc_url = ACM_BASE_URL +'/'+ n['href']
-                except:
-                    pass
-            source.save()
         
-        paper.source = source
         try: paper.source_session = html_strip( re.search( 'SESSION:(.*)', params['data'] ).group(1) )
-        except: pass
-        try: paper.source_pages = html_strip( re.search( 'Pages:(.*)', params['data'] ).group(1) )
         except: pass
         try: 
             abstract_node = soup.find('p', attrs={'class':'abstract'}).string
@@ -587,31 +509,13 @@ def import_acm_citation(params, paper=None):
         except: pass
         paper.save()
         
-        for node in soup.find('div', attrs={'class':'authors'}).findAll('tr'):
-            td1, td2 = node.findAll('td')
-            org_and_location = td2.find('small')
-            if org_and_location:
-                if org_and_location.string and org_and_location.string.find(',')>-1:
-                    organization_name = html_strip( org_and_location.string[0:org_and_location.string.index(',')] )
-                    location = html_strip( org_and_location.string[org_and_location.string.index(',')+1:] )
-                else:
-                    organization_name = html_strip(org_and_location)
-                    location = ''
-                organization, created = Organization.objects.get_or_create( name=organization_name )
-                if created: organization.save()
-                author, created = Author.objects.get_or_create(
-                    name = html_strip( td1.find('a').string ),
-                )
-                author.organizations.add(organization)
-                author.save()
-                paper.organizations.add(organization)
-            else:
-                author, created = Author.objects.get_or_create(
-                    name = html_strip( td1.find('a').string ),
-                )
-            if created: author.save()
-            paper.authors.add( author )
-            
+        p_bibtex_link = re.compile( "popBibTex.cfm[^']+")
+        bibtex_link = p_bibtex_link.search( params['data'] )
+        if bibtex_link:
+            params_bibtex = openanything.fetch('http://portal.acm.org/'+bibtex_link.group(0))
+            if params_bibtex['status']==200 or params_bibtex['status']==302:
+                importer.import_bibtex_from_html( paper, params_bibtex['data'] )
+
         node = soup.find('div', attrs={'class':'sponsors'})
         if node:
             for node in node.contents:
@@ -691,9 +595,18 @@ def import_ieee_citation(params, paper=None):
         soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<!-BMS End-->','').replace('<in>','') )
         
         print soup.find('span', attrs={'class':'headNavBlueXLarge2'})
+
+        p_arnumber = re.compile( '<arnumber>[0-9]+</arnumber>', re.IGNORECASE )
+        arnumber = p_arnumber.search( params['data'] ).group(0)
+        if arnumber:
+            print 'arnumber', arnumber
+            params_bibtex = openanything.fetch('http://ieeexplore.ieee.org/xpls/citationAct', post_data={ 'dlSelect':'cite_abs', 'fileFormate':'BibTex', 'arnumber':arnumber, 'Submit':'Download'  } )
+            print params_bibtex
+            if params_bibtex['status']==200 or params_bibtex['status']==302:
+                paper = importer.import_bibtex_from_html( paper, params_bibtex['data'] )
         
         if not paper:
-            paper, created = get_or_create_paper_via(
+            paper, created = importer.get_or_create_paper_via(
                 title = html_strip( str(soup.find('title').string).replace('IEEEXplore#','') ),
                 doi = re.search( 'Digital Object Identifier: ([a-zA-Z0-9./]*)', params['data'] ).group(1),
             )
@@ -727,19 +640,6 @@ def import_ieee_citation(params, paper=None):
         paper.abstract = html_strip( soup.findAll( 'td', attrs={'class':'bodyCopyBlackLargeSpaced'})[0].contents[-1] )
         paper.save()
         
-        for node in soup.findAll('p', attrs={'class':'bodyCopyBlackLargeSpaced'})[0].findAll('a', attrs={'class':'bodyCopy'}):
-            print 'author node:', node
-            if node.string:
-                name = html_strip( node.string )
-            else:
-                name = html_strip( node.b.font.string ) + html_strip( node.contents[-1] )
-            print 'author', name
-            author, created = Author.objects.get_or_create(
-                name = name,
-            )
-            if created: author.save()
-            paper.authors.add( author )
-            
         for node in soup.findAll('a', attrs={'class':'bodyCopy'}):
             if node.contents[0]=='PDF':
                 file_url = IEEE_BASE_URL + node['href']
@@ -780,7 +680,7 @@ def import_unknown_citation(params, orig_url, paper=None):
             
             if not paper:
                 md5_hexdigest = get_md5_hexdigest_from_data( data )
-                paper, created = get_or_create_paper_via( full_text_md5=md5_hexdigest )
+                paper, created = importer.get_or_create_paper_via( full_text_md5=md5_hexdigest )
                 if created:
                     #paper.title = filename
                     paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
@@ -803,11 +703,8 @@ def import_unknown_citation(params, orig_url, paper=None):
     
         # see 
         try:
-#            soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<!--//-->','').replace('<![CDATA[//>','').replace('<!]]>','') )
-#            print soup.prettify()
             web_dir_root = params['url'][: params['url'].find('/',8) ]
             web_dir_current = params['url'][: params['url'].rfind('/') ]
-            #for a in soup.findAll('a'):
             for a in p_html_a.findall( params['data'] ):
                 try: href = p_html_a_href.search(a).group(1)
                 except:
@@ -823,7 +720,10 @@ def import_unknown_citation(params, orig_url, paper=None):
                 if href.lower().endswith('.pdf'):
                     print "href", href
                     paper = import_unknown_citation( openanything.fetch(href), orig_url, paper=paper )
-                    if paper: break
+                    if paper:
+                        importer.import_bibtex_from_html( paper, params['data'] )
+                        paper.save()
+                        break
         except:
             traceback.print_exc()
             if paper:
@@ -843,7 +743,7 @@ def import_document( filename, data=None ):
     try:
         print thread.get_ident(), 'importing paper =', filename
         md5_hexdigest = get_md5_hexdigest_from_data( data )
-        paper, created = get_or_create_paper_via( full_text_md5=md5_hexdigest )
+        paper, created = importer.get_or_create_paper_via( full_text_md5=md5_hexdigest )
         if created:
             #paper.title = filename
             paper.save_full_text_file( defaultfilters.slugify(os.path.split(filename)[1].replace('.pdf',''))+'.pdf', data )
@@ -966,6 +866,7 @@ class MainGUI:
         self.ui.get_widget('menuitem_import_doi').connect('activate', self.import_doi)
         self.ui.get_widget('menuitem_import_file').connect('activate', self.import_file)
         self.ui.get_widget('menuitem_preferences').connect('activate', lambda x: PreferencesGUI())
+        self.ui.get_widget('menuitem_import_test_urls').connect('activate', lambda x: fetch_citations_via_urls( TEST_IMPORT_URLS ) )
         
     def init_search_box(self):
         thread.start_new_thread( self.watch_middle_pane_search, () )
@@ -2412,7 +2313,6 @@ class MainGUI:
                             '', # empty_str
                             '', # pubmed_id
                         )
-                        print thread.get_ident(), 'row =', row
                         rows.append( row )
                     except: 
                         #pass
@@ -2804,6 +2704,7 @@ class PaperEditGUI:
         self.ui.get_widget('toolbutton_refresh_from_pdf').connect("clicked", lambda x: self.toolbutton_refresh_extracted_text_from_pdf() )
         self.ui.get_widget('entry_title').set_text( self.paper.title )
         self.ui.get_widget('entry_doi').set_text( self.paper.doi )
+        self.ui.get_widget('entry_import_url').set_text( self.paper.import_url )
         self.ui.get_widget('textview_abstract').get_buffer().set_text( self.paper.abstract )
         self.ui.get_widget('textview_bibtex').get_buffer().set_text( self.paper.bibtex )
         self.ui.get_widget('textview_extracted_text').get_buffer().set_text( self.paper.extracted_text )
@@ -2923,6 +2824,7 @@ class PaperEditGUI:
     def save(self):
         self.paper.title = self.ui.get_widget('entry_title').get_text()
         self.paper.doi = self.ui.get_widget('entry_doi').get_text()
+        self.paper.import_url = self.ui.get_widget('entry_import_url').get_text()
         text_buffer = self.ui.get_widget('textview_abstract').get_buffer()
         self.paper.abstract = text_buffer.get_text( text_buffer.get_start_iter(), text_buffer.get_end_iter() )
         text_buffer = self.ui.get_widget('textview_bibtex').get_buffer()
