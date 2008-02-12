@@ -236,7 +236,7 @@ def fetch_citations_via_bibtexs(bibtexs):
 
 def fetch_documents_via_filenames(filenames):
     print 'trying to fetch:', filenames
-    t = thread.start_new_thread( import_documents_via_filenames, (bibtexs,) )
+    t = thread.start_new_thread( import_documents_via_filenames, (filenames,) )
     
 def import_citations(urls):
     for url in urls:
