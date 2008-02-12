@@ -377,6 +377,29 @@ class MainGUI:
             fetch_documents_via_filenames( dialog.get_filenames() )
         dialog.destroy()
     
+    def import_directory(self, o):
+        dialog = gtk.FileChooserDialog(title='Select a directory to import...', parent=None, action=gtk.FILE_CHOOSER_ACTION_SELECT_FOLDER, buttons=(gtk.STOCK_CANCEL,gtk.RESPONSE_CANCEL,gtk.STOCK_OPEN,gtk.RESPONSE_OK), backend=None)
+        #dialog.connect('response', lambda x,y: dialog.destroy())
+        dialog.set_default_response(gtk.RESPONSE_OK)
+        dialog.set_select_multiple(True)
+        dialog.show_all()
+        response = dialog.run()
+        if response == gtk.RESPONSE_OK:
+            dirs = set( [ os.path.join( dialog.get_current_folder(), x ) for x in dialog.get_filenames() ] )
+            pdf_filenames = set()
+            while dirs:
+                dir = dirs.pop()
+                if os.path.isdir(dir):
+                    for filename in os.listdir(dir):
+                        if filename=='.Trash': continue
+                        filename = os.path.join( dir, filename )
+                        if os.path.isdir(filename) and not filename.startswith( settings.MEDIA_ROOT ):
+                            dirs.add(filename)
+                        elif filename.lower().endswith('.pdf'):
+                            pdf_filenames.add(filename)
+            fetch_documents_via_filenames( pdf_filenames )
+        dialog.destroy()
+    
     def import_bibtex(self, o):
         dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
         #dialog.connect('response', lambda x,y: dialog.destroy())
@@ -456,6 +479,7 @@ class MainGUI:
         self.ui.get_widget('menuitem_import_url').connect('activate', self.import_url)
         self.ui.get_widget('menuitem_import_doi').connect('activate', self.import_doi)
         self.ui.get_widget('menuitem_import_file').connect('activate', self.import_file)
+        self.ui.get_widget('menuitem_import_directory').connect('activate', self.import_directory)
         self.ui.get_widget('menuitem_preferences').connect('activate', lambda x: PreferencesGUI())
         self.ui.get_widget('menuitem_import_test_urls').connect('activate', lambda x: fetch_citations_via_urls( TEST_IMPORT_URLS ) )
         self.ui.get_widget('menuitem_import_bibtex').connect('activate', self.import_bibtex)
