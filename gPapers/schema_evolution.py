@@ -114,4 +114,22 @@ sqlite3_evolutions = [
         "INSERT INTO \"gPapers_paper\" SELECT \"id\",\"title\",\"doi\",\"pubmed_id\",\"import_url\",\"source_id\",\"source_session\",\"source_pages\",\"abstract\",\"notes\",\"full_text\",\"full_text_md5\",\"extracted_text\",\"page_count\",\"rating\",\"read_count\",\"bibtex\",\"created\",\"updated\" FROM \"gPapers_paper_1337_TMP\";",
         "DROP TABLE \"gPapers_paper_1337_TMP\";",
     ],
+    [('fv1:752600870','fv1:-138692700'), # generated 2008-02-12 13:29:28.474059
+        "ALTER TABLE \"gPapers_bookmark\" ADD COLUMN \"x\" real NULL;",
+        "UPDATE \"gPapers_bookmark\" SET \"x\" = '0.01' WHERE \"x\" IS NULL ;",
+        "-- FYI: sqlite does not support changing columns, so we create a new \"gPapers_bookmark\" and delete the old (ie, this could take a while if you have a lot of data)",
+        "ALTER TABLE \"gPapers_bookmark\" RENAME TO \"gPapers_bookmark_1337_TMP\";",
+        "CREATE TABLE \"gPapers_bookmark\" (\n    \"id\" integer NOT NULL PRIMARY KEY,\n    \"paper_id\" integer NOT NULL REFERENCES \"gPapers_paper\" (\"id\"),\n    \"page\" integer NOT NULL,\n    \"x\" real NOT NULL,\n    \"notes\" text NOT NULL,\n    \"created\" datetime NOT NULL,\n    \"updated\" datetime NOT NULL\n)\n;",
+        "INSERT INTO \"gPapers_bookmark\" SELECT \"id\",\"paper_id\",\"page\",\"x\",\"notes\",\"created\",\"updated\" FROM \"gPapers_bookmark_1337_TMP\";",
+        "DROP TABLE \"gPapers_bookmark_1337_TMP\";",
+    ],
+    [('fv1:-138692700','fv1:556047524'), # generated 2008-02-12 13:29:36.906530
+        "ALTER TABLE \"gPapers_bookmark\" ADD COLUMN \"y\" real NULL;",
+        "UPDATE \"gPapers_bookmark\" SET \"y\" = '0.01' WHERE \"y\" IS NULL ;",
+        "-- FYI: sqlite does not support changing columns, so we create a new \"gPapers_bookmark\" and delete the old (ie, this could take a while if you have a lot of data)",
+        "ALTER TABLE \"gPapers_bookmark\" RENAME TO \"gPapers_bookmark_1337_TMP\";",
+        "CREATE TABLE \"gPapers_bookmark\" (\n    \"id\" integer NOT NULL PRIMARY KEY,\n    \"paper_id\" integer NOT NULL REFERENCES \"gPapers_paper\" (\"id\"),\n    \"page\" integer NOT NULL,\n    \"x\" real NOT NULL,\n    \"y\" real NOT NULL,\n    \"notes\" text NOT NULL,\n    \"created\" datetime NOT NULL,\n    \"updated\" datetime NOT NULL\n)\n;",
+        "INSERT INTO \"gPapers_bookmark\" SELECT \"id\",\"paper_id\",\"page\",\"x\",\"y\",\"notes\",\"created\",\"updated\" FROM \"gPapers_bookmark_1337_TMP\";",
+        "DROP TABLE \"gPapers_bookmark_1337_TMP\";",
+    ],
 ] # don't delete this comment! ## sqlite3_evolutions_end ##

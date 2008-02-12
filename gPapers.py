@@ -135,7 +135,7 @@ TEST_IMPORT_URLS = [
 
 
 
-
+note_icon = gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'note.png' ) )
 
 def humanize_count(x, s, p, places=1):
     output = []
@@ -563,6 +563,7 @@ class MainGUI:
         self.pdf_preview = {}
         self.pdf_preview['scale'] = None
         pdf_preview.connect("expose-event", self.on_expose_pdf_preview)
+        pdf_preview.connect("button-press-event", self.handle_pdf_preview_button_press_event)
         self.ui.get_widget('button_move_previous_page').connect('clicked', lambda x: self.goto_pdf_page( self.pdf_preview['current_page_number']-1 ) )
         self.ui.get_widget('button_move_next_page').connect('clicked', lambda x: self.goto_pdf_page( self.pdf_preview['current_page_number']+1 ) )
         self.ui.get_widget('button_zoom_in').connect('clicked', lambda x: self.zoom_pdf_page( -1.2 ) )
@@ -646,6 +647,12 @@ class MainGUI:
         cr.rectangle(0, 0, self.pdf_preview['width'], self.pdf_preview['height'])
         cr.fill()
         self.pdf_preview['current_page'].render(cr)
+        if self.pdf_preview.get('current_page_number')!=None:
+            for bookmark in Bookmark.objects.filter( paper=self.displayed_paper, page=self.pdf_preview.get('current_page_number') ):
+                x_pos = int( bookmark.x*widget.allocation.width )
+                y_pos = int( bookmark.y*widget.allocation.height )
+                widget.window.draw_pixbuf( None, note_icon, 0,0, x_pos, y_pos )
+        
         
     def init_my_library_filter_pane(self):
         
@@ -1010,6 +1017,50 @@ class MainGUI:
                     menu.show_all()
                     menu.popup(None, None, None, event.button, event.get_time())
             return True
+
+    def handle_pdf_preview_button_press_event(self, pdf_preview, event):
+        x = int(event.x)
+        y = int(event.y)
+        x_percent = 1.0*x/pdf_preview.allocation.width
+        y_percent = 1.0*y/pdf_preview.allocation.height
+        time = event.time
+        #print 'x, y, x_percent, y_percent, time', x, y, x_percent, y_percent, time
+
+        # are we clicking on a bookmark?
+        current_page_number = self.pdf_preview.get('current_page_number')
+        bookmark = None
+        if self.displayed_paper and current_page_number>=0:
+            for b in self.displayed_paper.bookmark_set.filter( paper=self.displayed_paper, page=current_page_number ):
+                x_delta = x - b.x*pdf_preview.allocation.width
+                y_delta = y - b.y*pdf_preview.allocation.height
+                if x_delta>0 and x_delta<16:
+                    if y_delta>0 and y_delta<16:
+                        bookmark = b
+                        
+        if event.button == 1 and bookmark:
+            self.select_bookmark_pane_item(None, bookmark_id=bookmark.id)
+
+        if event.button == 3:
+            if self.displayed_paper and current_page_number>=0:
+                menu = gtk.Menu()
+                if bookmark:
+                    delete = gtk.ImageMenuItem(stock_id=gtk.STOCK_DELETE)
+                    delete.connect( 'activate', lambda x: self.delete_bookmark(bookmark.id) )
+                    menu.append(delete)
+                else:
+                    add = gtk.ImageMenuItem(stock_id=gtk.STOCK_ADD)
+                    add.connect( 'activate', lambda x: self.add_bookmark(self.displayed_paper, current_page_number, x_percent, y_percent) )
+                    menu.append(add)
+                menu.show_all()
+                menu.popup(None, None, None, event.button, event.get_time())
+        
+        return True
+    
+    def add_bookmark(self, paper, page, x, y):
+        bookmark = Bookmark.objects.create( paper=paper, page=page, x=x, y=y )
+        bookmark.save()
+        self.update_bookmark_pane_from_paper( self.displayed_paper )
+        self.select_bookmark_pane_item(None, bookmark_id=bookmark.id)  
         
     def handle_middle_top_pane_button_press_event(self, treeview, event):
         if event.button == 3:
@@ -1370,13 +1421,22 @@ class MainGUI:
                 try: title = str(bookmark.notes).split('\n')[0]
                 except: title = str(bookmark.notes)
                 self.treeview_bookmarks_model.append( (bookmark.id, bookmark.page, title, bookmark.updated.strftime(DATE_FORMAT), len(str(bookmark.notes).split())) )
+        self.refresh_pdf_preview_pane()
         self.select_bookmark_pane_item()
         
-    def select_bookmark_pane_item(self, selection=None):
+    def select_bookmark_pane_item(self, selection=None, bookmark_id=None):
         if selection==None:
             selection = self.ui.get_widget('treeview_bookmarks').get_selection()
         toolbar_bookmarks = self.ui.get_widget('toolbar_bookmarks')
         toolbar_bookmarks.foreach( toolbar_bookmarks.remove )
+        
+        if bookmark_id!=None:
+            selection.unselect_all()
+            # we're being asked to select a specific row, not handle a selection event
+            for i in range(0,len(self.treeview_bookmarks_model)):
+                if self.treeview_bookmarks_model[i][0]==bookmark_id:
+                    selection.select_path( (i,) )
+                    return
         
         try: selected_bookmark_id = self.treeview_bookmarks_model.get_value( self.ui.get_widget('treeview_bookmarks').get_selection().get_selected()[1], 0 )
         except: selected_bookmark_id = -1

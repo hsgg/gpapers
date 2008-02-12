@@ -261,6 +261,8 @@ class Bookmark(models.Model):
 
     paper = models.ForeignKey(Paper)
     page = models.IntegerField()
+    x = models.FloatField(default=0.01)
+    y = models.FloatField(default=0.01)
 #    title = models.CharField(max_length='1024', blank=True)
     notes = models.TextField()
     created = models.DateTimeField(auto_now_add=True)
