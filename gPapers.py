@@ -106,9 +106,10 @@ try:
 except:
     traceback.print_exc()
     print 'could not import python-poppler [https://code.launchpad.net/~poppler-python/poppler-python/].  try running (from "%s"):' % RUN_FROM_DIR
-    print "(you'll need libpoppler2, libpoppler-dev, libpoppler-glib2, libpoppler-glib-dev)"
+    print "\tsudo apt-get install build-essential libpoppler2 libpoppler-dev libpoppler-glib2 libpoppler-glib-dev python-cairo-dev bzr gnome-common python-dev python-gnome2-dev python-gtk2-dev python-gobject-dev python-pyorbit-dev"
     print '\tbzr branch http://bazaar.launchpad.net/~poppler-python/poppler-python/poppler-0.6-experimental'
     print '\tcd poppler-0.6-experimental'
+    print '\t./autogen.sh'
     print '\t./configure'
     print '\tmake'
     print '\tsudo make install'
@@ -3004,7 +3005,7 @@ class PreferencesGUI:
 
 def init_db():
     import django.core.management.commands.syncdb
-    django.core.management.commands.syncdb.Command().handle_noargs(interactive=True)
+    django.core.management.commands.syncdb.Command().handle_noargs(interactive=False)
     for app in models.get_apps():
         app_name = app.__name__.split('.')[-2]
         if app_name=='gPapers':
