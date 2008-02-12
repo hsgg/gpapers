@@ -47,6 +47,16 @@ class Source(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
+    def merge(self, id):
+        if id==self.id:
+            return
+        other_source = Source.objects.get(id=id)
+        if not self.publisher: 
+            self.publisher = other_source.publisher
+        for paper in other_source.paper_set.all():
+            self.paper_set.add( paper )
+        other_source.delete()
+
     class Admin:
         list_display = ( 'id', 'name', 'issue', 'location', 'publisher', 'publication_date', )
 

@@ -22,7 +22,6 @@ from datetime import date, datetime, timedelta
 from time import strptime
 #from BeautifulSoup 
 import BeautifulSoup
-from htmlentitydefs import name2codepoint as n2cp
 
 
 RUN_FROM_DIR = os.path.abspath(os.path.dirname(sys.argv[0])) + '/'
@@ -31,14 +30,9 @@ VERSION = 'v0.0.0'
 GPL = open( RUN_FROM_DIR + 'GPL.txt', 'r' ).read()
 
 DATE_FORMAT = '%Y-%m-%d'
-ACM_BASE_URL = 'http://portal.acm.org'
-IEEE_BASE_URL = 'http://ieeexplore.ieee.org'
-ACM_USERNAME = None
-ACM_PASSWORD = None
 
 # GUI imports
 try:
-    #import gconf
     import pygtk
     pygtk.require("2.0")
     import gobject
@@ -76,9 +70,9 @@ except:
 try:
     from django.template import defaultfilters
     print 
-    print 'note: django provides a web-based administrative tool for your database.  to use it, run the following...'
+    print 'note: django provides a web-based administrative tool for your database.  to use it, uncomment the commented-out lines under INSTALLED_APPS in settings.py and run the following:'
     print '         ./manage.py runserver'
-    print '      and go to http://127.0.0.1:8000/admin/'
+    print '      then go to http://127.0.0.1:8000/admin/'
     print
 except:
     traceback.print_exc()
@@ -123,6 +117,7 @@ os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 from django.db.models import Q
 from gPapers.models import *
 import importer
+from importer import ACM_BASE_URL, IEEE_BASE_URL, html_strip, pango_excape, get_md5_hexdigest_from_data
 
 
 
@@ -141,31 +136,6 @@ TEST_IMPORT_URLS = [
 
 
 
-
-p_whitespace = re.compile( '[\s]+')
-p_doi = re.compile( 'doi *: *(10.[a-z0-9]+/[a-z0-9.]+)', re.IGNORECASE )
-
-def substitute_entity(match):
-    ent = match.group(2)
-    if match.group(1) == "#":
-        return unichr(int(ent))
-    else:
-        cp = n2cp.get(ent)
-
-        if cp:
-            return unichr(cp)
-        else:
-            return match.group()
-
-def decode_htmlentities(string):
-    entity_re = re.compile("&(#?)(\d{1,5}|\w{1,8});")
-    return entity_re.subn(substitute_entity, string)[0]
-
-def html_strip(s):
-    return decode_htmlentities( p_whitespace.sub( ' ', str(s).replace('&nbsp;', ' ').strip() ) )
-
-def pango_excape(s):
-    return s.replace('&','&amp;').replace('>','&gt;').replace('<','&lt;')
 
 def humanize_count(x, s, p, places=1):
     output = []
@@ -193,11 +163,6 @@ def truncate_long_str(s, max_length=96):
     else:
         return s[0:max_length] + '...'
     
-def get_md5_hexdigest_from_data(data):
-    m = md5.new()
-    m.update(data)
-    return m.hexdigest()
-
 def set_model_from_list(cb, items):
     """Setup a ComboBox or ComboBoxEntry based on a list of (int,str)s."""           
     model = gtk.ListStore(int, str)
@@ -252,7 +217,7 @@ def sort_model_by_column(column, model, model_column_number):
      
 def fetch_citation_via_url(url):
     print 'trying to fetch:', url
-    t = thread.start_new_thread( import_citation, (url,) )
+    t = thread.start_new_thread( importer.import_citation, (url, None, main_gui.refresh_middle_pane_search ) )
 
 def fetch_citation_via_middle_top_pane_row(row):
     t = thread.start_new_thread( import_citation_via_middle_top_pane_row, (row,) )
@@ -275,18 +240,18 @@ def fetch_documents_via_filenames(filenames):
     
 def import_citations(urls):
     for url in urls:
-        import_citation(url, refresh_after=False)
+        importer.import_citation( url, callback=main_gui.refresh_middle_pane_search )
     main_gui.refresh_middle_pane_search()
     
 def import_citations_via_references(references):
     for reference in references:
         if not reference.referenced_paper:
             if reference.url_from_referencing_paper:
-                reference.referenced_paper = import_citation( reference.url_from_referencing_paper, refresh_after=False )
+                reference.referenced_paper = importer.import_citation( reference.url_from_referencing_paper )
                 reference.save()
         if not reference.referencing_paper:
             if reference.url_from_referenced_paper:
-                reference.referenced_paper = import_citation( reference.url_from_referenced_paper, refresh_after=False )
+                reference.referenced_paper = importer.import_citation( reference.url_from_referenced_paper  )
                 reference.save()
     main_gui.refresh_middle_pane_search()
     
@@ -314,7 +279,7 @@ def import_citations_via_bibtexs(bibtexs):
     main_gui.refresh_middle_pane_search()    
 
 def import_citation_via_bibtex(bibtex):
-    importer.import_bibtex_from_html(None, bibtex)
+    importer.update_paper_from_bibtex_html(None, bibtex)
     
 def import_citation_via_middle_top_pane_row(row):
     # id, authors, title, journal, year, rating, abstract, icon, import_url, doi, created, updated, empty_str, pubmed_id
@@ -339,424 +304,8 @@ def import_citation_via_middle_top_pane_row(row):
     
     paper.save()
     
-    import_citation( paper.import_url, paper=paper )
+    importer.import_citation( paper.import_url, paper=paper, callback=main_gui.refresh_middle_pane_search )
     
-    
-def import_citation(url, paper=None, refresh_after=True):
-    main_gui.active_threads[ thread.get_ident() ] = 'importing: '+ url
-    try:
-        params = openanything.fetch(url)
-        if params['status']!=200 and params['status']!=302 :
-            print thread.get_ident(), 'unable to download: %s  (%i)' % ( url, params['status'] )
-#            gtk.gdk.threads_enter()
-#            error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
-#            error.set_markup('<b>Unable to Download Paper</b>\n\nThe following url:\n<i>%s</i>\n\nreturned the HTTP error code: %i' % ( url.replace('&', '&amp;'), params['status'] ))
-#            error.run()
-#            gtk.gdk.threads_leave()
-            return
-        if params['url'].startswith('http://portal.acm.org/citation'):
-            paper = import_acm_citation(params, paper=paper)
-            if paper and refresh_after: main_gui.refresh_middle_pane_search()
-            return paper
-#        if params['url'].startswith('http://dx.doi.org'):
-#            paper = import_unknown_citation(params)
-#            if paper and refresh_after: main_gui.refresh_middle_pane_search()
-#            return paper
-        if params['url'].startswith('http://ieeexplore.ieee.org'):
-            if params['url'].find('search/wrapper.jsp')>-1:
-                paper = import_ieee_citation( openanything.fetch( params['url'].replace('search/wrapper.jsp','xpls/abs_all.jsp') ), paper=paper )
-                if paper and refresh_after: main_gui.refresh_middle_pane_search()
-            else:
-                paper = import_ieee_citation( params, paper=paper )
-                if paper and refresh_after: main_gui.refresh_middle_pane_search()
-            return paper
-        
-        # let's see if there's a pdf somewhere in here...
-        paper = import_unknown_citation(params, params['url'], paper=paper)
-        if paper and refresh_after: main_gui.refresh_middle_pane_search()
-        if paper: return paper
-        
-    except:
-        traceback.print_exc()
-        gtk.gdk.threads_enter()
-        error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
-        error.connect('response', lambda x,y: error.destroy())
-        error.set_markup('<b>Unknown Error</b>\n\nUnable to download this resource.')
-        error.run()
-        gtk.gdk.threads_leave()
-
-    gtk.gdk.threads_enter()
-    error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
-    error.connect('response', lambda x,y: error.destroy())
-    error.set_markup('<b>No Paper Found</b>\n\nThe given URL does not appear to contain or link to any PDF files. (perhaps you have it buy it?) Try downloading the file and adding it using "File &gt;&gt; Import..."\n\n%s' % pango_excape(url))
-    error.run()
-    gtk.gdk.threads_leave()
-    if main_gui.active_threads.has_key( thread.get_ident() ):
-        del main_gui.active_threads[ thread.get_ident() ]
-    
-def should_we_reimport_paper(paper):
-    gtk.gdk.threads_enter()
-    dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
-    #dialog.connect('response', lambda x,y: dialog.destroy())
-    dialog.set_markup('This paper already exists in your local library:\n\n<i>"%s"</i>\n(imported on %s)\n\nShould we continue the import, updating/overwriting the previous entry?' % ( paper.title, str(paper.created.date()) ))
-    dialog.set_default_response(gtk.RESPONSE_OK)
-    dialog.show_all()
-    response = dialog.run()
-    dialog.destroy()
-    gtk.gdk.threads_leave()
-    return response == gtk.RESPONSE_OK
-
-def import_acm_citation(params, paper=None):
-    print thread.get_ident(), 'downloading acm citation:', params['url']
-    try:
-        print thread.get_ident(), 'parsing...'
-        
-        soup = BeautifulSoup.BeautifulSoup( params['data'] )
-        
-        title = []
-        for node in soup.findAll('td', attrs={'class':'medium-text'})[0].findAll('strong'):
-            title.append(node.string)
-        try: 
-            doi = str(soup.find('form', attrs={'name':'popbinder'}).nextSibling.table.findAll('tr')[-1].findAll('td')[-1].a.string)
-            if doi.startswith('http://doi.acm.org/'):
-                doi = doi[len('http://doi.acm.org/'):]
-        except: doi = ''
-
-        full_text_data = None
-        full_text_filename = None
-        for node in soup.findAll('a', attrs={'name':'FullText'}):
-            if node.contents[1]=='Pdf':
-                file_url = ACM_BASE_URL +'/'+ node['href']
-                print thread.get_ident(), 'downloading paper from', file_url
-                params_file = openanything.fetch(file_url)
-                if params_file['status']==200 or params_file['status']==302 :
-                    try:
-                        ext = params_file['url']
-                        if ext.find('?')>-1:
-                            ext = file_url[0:ext.find('?')]
-                        ext = ext[ ext.rfind('.')+1: ]
-                    except:
-                        ext = 'unknown'
-                    
-                    if params_file['data'].startswith('%PDF'):
-                        #paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.pdf', params_file['data'] )
-                        full_text_filename = defaultfilters.slugify(doi) +'_'+ defaultfilters.slugify(title) +'.'+ defaultfilters.slugify(ext)
-                        full_text_data = params_file['data']
-                    elif params_file['data'].find('<!DOCTYPE')>-1 and params_file['data'].find('logfrm')>-1:
-                        # it appears we have an ACM login page...
-
-                        global ACM_USERNAME
-                        global ACM_PASSWORD
-                        if not ACM_USERNAME:
-                            dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_OK_CANCEL, flags=gtk.DIALOG_MODAL )
-                            #dialog.connect('response', lambda x,y: dialog.destroy())
-                            dialog.set_markup('<b>ACM Login</b>\n\nEnter your ACM username and password:')
-                            entry_username = gtk.Entry()
-                            entry_password = gtk.Entry()
-                            entry_password.set_activates_default(True)
-                            dialog.vbox.pack_start(entry_username)
-                            dialog.vbox.pack_start(entry_password)
-                            dialog.set_default_response(gtk.RESPONSE_OK)
-                            gtk.gdk.threads_enter()
-                            dialog.show_all()
-                            response = dialog.run()
-                            if response == gtk.RESPONSE_OK:
-                                ACM_USERNAME = entry_username.get_text()
-                                ACM_PASSWORD = entry_password.get_text()
-                            gtk.gdk.threads_leave()
-                            dialog.destroy()
-                            
-                        post_data = {'username':ACM_USERNAME, 'password':ACM_PASSWORD, 'submit':'Login'}
-                        params_login = openanything.fetch('https://portal.acm.org/poplogin.cfm?is=0&amp;dl=ACM&amp;coll=ACM&amp;comp_id=1220288&amp;want_href=delivery%2Ecfm%3Fid%3D1220288%26type%3Dpdf%26CFID%3D50512225%26CFTOKEN%3D24664038&amp;CFID=50512225&amp;CFTOKEN=24664038&amp;td=1200684914991', post_data=post_data, )
-                        print "params_login['url']", params_login['url']
-                        cfid = re.search( 'CFID=([0-9]*)', params_login['data'] ).group(1)
-                        cftoken = re.search( 'CFTOKEN=([0-9]*)', params_login['data'] ).group(1)
-                        new_file_url = file_url[0:file_url.find('&CFID=')] + '&CFID=%s&CFTOKEN=%s' % (cfid,cftoken)
-                        print 'new_file_url', new_file_url
-                        params_file = openanything.fetch(new_file_url)
-                        if params_file['status']==200 or params_file['status']==302 :
-                            if params_file['data'].startswith('%PDF'):
-                                full_text_filename = defaultfilters.slugify(doi) +'_'+ defaultfilters.slugify(title) +'.'+ defaultfilters.slugify(ext)
-                                full_text_data = params_file['data']
-                            else:
-                                print thread.get_ident(), 'error downloading paper - still not a pdf after login:', params_file
-                        else:
-                            print thread.get_ident(), 'error downloading paper - after login:', params_file
-                    else:
-                        print thread.get_ident(), 'this does not appear to be a pdf file...'
-                        ext = params_file['url'][ params_file['url'].rfind('.')+1:]
-                        if not ext or len(ext)>5:
-                            ext = 'unknown'
-                        #paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params_file['data'] )
-                        full_text_filename = defaultfilters.slugify(doi) +'_'+ defaultfilters.slugify(title) +'.'+ defaultfilters.slugify(ext)
-                        full_text_data = params_file['data']
-                    #paper.save()
-                    break
-                else:
-                    print thread.get_ident(), 'error downloading paper:', params_file
-        
-        if not paper:
-            if full_text_data:
-                md5_hexdigest = get_md5_hexdigest_from_data( full_text_data )
-            else:
-                md5_hexdigest = None
-            paper, created = importer.get_or_create_paper_via(
-                title = html_strip(''.join(title)),
-                doi = doi,
-                full_text_md5 = md5_hexdigest,
-            )
-            if created:
-                if full_text_filename and full_text_data:
-                    paper.save_full_text_file( full_text_filename, full_text_data )
-                paper.save()
-            else: 
-                print thread.get_ident(), 'paper already imported'
-                if not should_we_reimport_paper(paper):
-                    return
-        else:
-            paper.title = html_strip(''.join(title))
-            paper.doi = doi
-            paper.save()
-            if full_text_filename and full_text_data:
-                paper.save_full_text_file( full_text_filename, full_text_data )
-            
-
-        paper.import_url = params['url']
-        
-        try: paper.source_session = html_strip( re.search( 'SESSION:(.*)', params['data'] ).group(1) )
-        except: pass
-        try: 
-            abstract_node = soup.find('p', attrs={'class':'abstract'}).string
-            if abstract_node:
-                paper.abstract = html_strip( abstract_node )
-            else:
-                paper.abstract = ''
-        except: pass
-        paper.save()
-        
-        p_bibtex_link = re.compile( "popBibTex.cfm[^']+")
-        bibtex_link = p_bibtex_link.search( params['data'] )
-        if bibtex_link:
-            params_bibtex = openanything.fetch('http://portal.acm.org/'+bibtex_link.group(0))
-            if params_bibtex['status']==200 or params_bibtex['status']==302:
-                importer.import_bibtex_from_html( paper, params_bibtex['data'] )
-
-        node = soup.find('div', attrs={'class':'sponsors'})
-        if node:
-            for node in node.contents:
-                if isinstance( node, BeautifulSoup.NavigableString ):
-                    sponsor_name = html_strip( node.replace(':','') )
-                    if sponsor_name:
-                        sponsor, created = Sponsor.objects.get_or_create(
-                            name = sponsor_name,
-                        )
-                        if created: sponsor.save()
-                        paper.sponsors.add( sponsor )
-                    
-        if soup.find('a', attrs={'name':'references'}):
-            for node in soup.find('a', attrs={'name':'references'}).parent.findNextSibling('table').findAll('tr'):
-                node = node.findAll('td')[2].div
-                line = None
-                doi = ''
-                acm_referencing_url = ''
-                for a in node.findAll('a'):
-                    if a['href'].startswith('citation'):
-                        line = html_strip(a.string)
-                        acm_referencing_url = ACM_BASE_URL +'/'+ a['href']
-                    if a['href'].startswith('http://dx.doi.org'):
-                        doi = html_strip(a.string)
-                if not line: line = html_strip(node.contents[0])
-                reference, created = Reference.objects.get_or_create(
-                    line_from_referencing_paper = line,
-                    url_from_referencing_paper = acm_referencing_url,
-                    doi_from_referencing_paper = doi,
-                    referencing_paper = paper,
-                )
-                if created: reference.save()
-        
-        if soup.find('a', attrs={'name':'citings'}):
-            for node in soup.find('a', attrs={'name':'citings'}).parent.findNextSibling('table').findAll('tr'):
-                node = node.findAll('td')[1].div
-                if node.string:
-                    reference, created = Reference.objects.get_or_create(
-                        line_from_referenced_paper = html_strip(node.string),
-                        referenced_paper = paper,
-                    )
-                    if created: reference.save()
-                else:
-                    line = ''
-                    doi = ''
-                    for a in node.findAll('a'):
-                        if a['href'].startswith('citation'):
-                            line = html_strip(a.string)
-                            url_from_referenced_paper = ACM_BASE_URL +'/'+ a['href']
-                        if a['href'].startswith('http://dx.doi.org'):
-                            doi = html_strip(a.string)
-                    reference, created = Reference.objects.get_or_create(
-                        line_from_referenced_paper = line,
-                        url_from_referenced_paper = url_from_referenced_paper,
-                        doi_from_referenced_paper = doi,
-                        referenced_paper = paper,
-                    )
-                    if created: reference.save()
-        
-        
-        paper.save()
-        print thread.get_ident(), 'imported paper =', paper.doi, paper.title, paper.get_authors_in_order()
-        return paper
-    except:
-        traceback.print_exc()
-        if paper:
-            paper.delete()
-
-
-def import_ieee_citation(params, paper=None):
-    print thread.get_ident(), 'downloading ieee citation:', params['url']
-    try:
-        print thread.get_ident(), 'parsing...'
-        file = open('import.html','w')
-        file.write( params['data'] )
-        file.close()
-        soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<!-BMS End-->','').replace('<in>','') )
-        
-        print soup.find('span', attrs={'class':'headNavBlueXLarge2'})
-
-        p_arnumber = re.compile( '<arnumber>[0-9]+</arnumber>', re.IGNORECASE )
-        arnumber = p_arnumber.search( params['data'] ).group(0)
-        if arnumber:
-            print 'arnumber', arnumber
-            params_bibtex = openanything.fetch('http://ieeexplore.ieee.org/xpls/citationAct', post_data={ 'dlSelect':'cite_abs', 'fileFormate':'BibTex', 'arnumber':arnumber, 'Submit':'Download'  } )
-            print params_bibtex
-            if params_bibtex['status']==200 or params_bibtex['status']==302:
-                paper = importer.import_bibtex_from_html( paper, params_bibtex['data'] )
-        
-        if not paper:
-            paper, created = importer.get_or_create_paper_via(
-                title = html_strip( str(soup.find('title').string).replace('IEEEXplore#','') ),
-                doi = re.search( 'Digital Object Identifier: ([a-zA-Z0-9./]*)', params['data'] ).group(1),
-            )
-            if created: paper.save()
-            else: 
-                print thread.get_ident(), 'paper already imported'
-                if not should_we_reimport_paper(paper):
-                    return
-
-#        publisher, created = Publisher.objects.get_or_create(
-#            name=html_strip( BeautifulSoup.BeautifulSoup( re.search( 'This paper appears in: (.*)', params['data'] ).group(1) ).a.strong.string ),
-#        )
-#        print 'publisher', publisher
-#        if created: publisher.save()
-        
-        source_string = html_strip( BeautifulSoup.BeautifulSoup( re.search( 'This paper appears in: (.*)', params['data'] ).group(1) ).a.strong.string )
-        try: location = html_strip( re.search( 'Location: (.*)', params['data'] ).group(1) )
-        except: location = ''
-        source, created = Source.objects.get_or_create(
-            name = source_string,
-            issue = html_strip(''),
-            location = location,
-            publication_date = None,
-            publisher = None,
-        )
-        
-        paper.import_url = params['url']
-        paper.source = source
-        paper.source_session = ''
-        #paper.source_pages = html_strip( re.search( 'On page(s):(.*)<BR>', params['data'], re.DOTALL ).group(1) ),
-        paper.abstract = html_strip( soup.findAll( 'td', attrs={'class':'bodyCopyBlackLargeSpaced'})[0].contents[-1] )
-        paper.save()
-        
-        for node in soup.findAll('a', attrs={'class':'bodyCopy'}):
-            if node.contents[0]=='PDF':
-                file_url = IEEE_BASE_URL + node['href']
-                print thread.get_ident(), 'downloading paper from', file_url
-                params = openanything.fetch(file_url)
-                if params['status']==200 or params['status']==302:
-                    if params['data'].startswith('%PDF'):
-                        ext = params['url'][ params['url'].rfind('.')+1:]
-                        if not ext or len(ext)>5:
-                            ext = 'pdf'
-                        paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params['data'] )
-                        paper.save()
-                    else:
-                        print thread.get_ident(), 'this isn\'t a pdf file:', params['url']
-                    break
-                else:
-                    print thread.get_ident(), 'error downloading paper:', params
-        
-        print thread.get_ident(), 'imported paper =', paper.id, paper.doi, paper.title, paper.get_authors_in_order()
-        return paper
-    except:
-        traceback.print_exc()
-        if paper:
-            paper.delete()
-
-p_html_a = re.compile( "<a [^>]+>" , re.IGNORECASE)
-p_html_a_href = re.compile( '''href *= *['"]([^'^"]+)['"]''' , re.IGNORECASE)
-
-def import_unknown_citation(params, orig_url, paper=None):
-
-    if params['data'].startswith('%PDF'):
-
-        # we have a live one!
-        try:
-            filename = params['url'][ params['url'].rfind('/')+1 : ]
-            data = params['data']
-            print thread.get_ident(), 'importing paper =', filename
-            
-            if not paper:
-                md5_hexdigest = get_md5_hexdigest_from_data( data )
-                paper, created = importer.get_or_create_paper_via( full_text_md5=md5_hexdigest )
-                if created:
-                    #paper.title = filename
-                    paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
-                    paper.import_url = orig_url
-                    paper.save()
-                    print thread.get_ident(), 'imported paper =', filename
-                else:
-                    print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.get_authors_in_order()
-            else:
-                paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
-                paper.import_url = orig_url
-                paper.save()
-        except:
-            traceback.print_exc()
-            if paper:
-                paper.delete()
-                paper = None
-    
-    else:
-    
-        # see 
-        try:
-            web_dir_root = params['url'][: params['url'].find('/',8) ]
-            web_dir_current = params['url'][: params['url'].rfind('/') ]
-            for a in p_html_a.findall( params['data'] ):
-                try: href = p_html_a_href.search(a).group(1)
-                except:
-                    print thread.get_ident(), 'couldn\'t figure out href from link:', a
-                    continue
-                if href.find('?')>0:
-                    href = href[ : href.find('?') ]
-                if not href.lower().startswith('http'):
-                    if href.startswith('/'):
-                        href = web_dir_root + href
-                    else:
-                        href = web_dir_current +'/'+ href
-                if href.lower().endswith('.pdf'):
-                    print "href", href
-                    paper = import_unknown_citation( openanything.fetch(href), orig_url, paper=paper )
-                    if paper:
-                        importer.import_bibtex_from_html( paper, params['data'] )
-                        paper.save()
-                        break
-        except:
-            traceback.print_exc()
-            if paper:
-                paper.delete()
-                paper = None
-    
-    return paper
-        
 
 def import_document( filename, data=None ):
     paper = None
@@ -2592,6 +2141,7 @@ class SourceEditGUI:
         self.ui = gtk.glade.XML(RUN_FROM_DIR + 'source_edit_gui.glade')
         self.edit_dialog = self.ui.get_widget('source_edit_dialog')
         self.edit_dialog.connect("delete-event", self.edit_dialog.destroy )
+        self.ui.get_widget('button_connect').connect("clicked", lambda x: self.show_connect_menu() )
         self.ui.get_widget('button_cancel').connect("clicked", lambda x: self.edit_dialog.destroy() )
         self.ui.get_widget('button_delete').connect("clicked", lambda x: self.delete() )
         self.ui.get_widget('button_save').connect("clicked", lambda x: self.save() )
@@ -2619,6 +2169,28 @@ class SourceEditGUI:
         self.source.save()
         self.edit_dialog.destroy()
         main_gui.refresh_middle_pane_search()
+
+    def connect(self, source, id):
+        dialog = gtk.MessageDialog( type=gtk.MESSAGE_QUESTION, buttons=gtk.BUTTONS_YES_NO, flags=gtk.DIALOG_MODAL )
+        dialog.set_markup('Really merge this source with "%s"?' % source.name)
+        dialog.set_default_response(gtk.RESPONSE_NO)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_YES:
+            source.merge(id)
+            self.edit_dialog.destroy()
+            main_gui.refresh_middle_pane_search()
+
+    def show_connect_menu(self):
+        menu = gtk.Menu()
+        for source in Source.objects.order_by('name'):
+            if source.id!=self.source.id:
+                menu_item = gtk.MenuItem( truncate_long_str(source.name) )
+                menu_item.connect( 'activate', lambda x, source, id: self.connect( source, id ), source, self.source.id )
+                menu.append( menu_item )
+        menu.popup(None, None, None, 0, 0)
+        menu.show_all()
         
             
 
@@ -3027,5 +2599,6 @@ if __name__ == "__main__":
     global main_gui
     init_db()
     main_gui = MainGUI()
+    importer.active_threads = main_gui.active_threads
     gtk.main()
         
