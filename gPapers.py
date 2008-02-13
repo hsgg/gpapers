@@ -26,7 +26,12 @@ import BeautifulSoup
 
 RUN_FROM_DIR = os.path.abspath(os.path.dirname(sys.argv[0])) + '/'
 PROGRAM = 'gPapers'
-VERSION = 'v0.0.0'
+SVN_INFO = commands.getoutput('svn info')
+VERSION = ''
+for line in SVN_INFO.split('\n'):
+    if line.startswith('Revision:'):
+        VERSION = 'svn:'+ line[10:]
+
 GPL = open( RUN_FROM_DIR + 'GPL.txt', 'r' ).read()
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -483,6 +488,8 @@ class MainGUI:
         self.ui.get_widget('menuitem_preferences').connect('activate', lambda x: PreferencesGUI())
         self.ui.get_widget('menuitem_import_test_urls').connect('activate', lambda x: fetch_citations_via_urls( TEST_IMPORT_URLS ) )
         self.ui.get_widget('menuitem_import_bibtex').connect('activate', self.import_bibtex)
+        self.ui.get_widget('menuitem_about').connect('activate', self.show_about_dialog )
+        self.ui.get_widget('menuitem_check_updates').connect('activate', lambda x: self.check_for_updates() )
         
     def init_search_box(self):
         thread.start_new_thread( self.watch_middle_pane_search, () )
@@ -490,6 +497,36 @@ class MainGUI:
         self.ui.get_widget('clear_middle_pane_search').connect( 'clicked', lambda x: self.clear_all_search_and_filters() )
         self.ui.get_widget('save_smart_search').connect( 'clicked', lambda x: self.save_smart_search() )
         
+    def show_about_dialog(self, o):
+        about = gtk.AboutDialog()
+        about.set_name('gPapers')
+        about.set_version(VERSION)
+        about.set_copyright('Copyright (c) 2008 Derek Anderson')
+        about.set_comments('''The Gnome-based Scientific Paper Organizer''')
+        about.set_license(GPL)
+        about.set_website('http://gpapers.org/')
+        about.set_authors(['Derek Anderson','http://kered.org'])
+        about.connect('response', lambda x,y: about.destroy())
+        about.show()
+        
+    def check_for_updates(self):
+        parent_self = self
+        class UpdateThread(threading.Thread):
+            def run(self):
+                parent_self.active_threads[ thread.get_ident() ] = 'checking for updates...'
+                output = commands.getoutput('svn update')
+                gtk.gdk.threads_enter()
+                dialog = gtk.MessageDialog( type=gtk.MESSAGE_INFO, buttons=gtk.BUTTONS_OK )
+                dialog.connect('response', lambda x,y: dialog.destroy())
+                dialog.set_markup('<b>Output from SVN:</b>\n\n%s\n\n(restart for changes to take effect)' % ( pango_excape(output) ))
+                dialog.show_all()
+                response = dialog.run()
+                gtk.gdk.threads_leave()
+                if parent_self.active_threads.has_key( thread.get_ident() ):
+                    del parent_self.active_threads[ thread.get_ident() ]
+        t = UpdateThread()
+        t.start()
+
     def clear_all_search_and_filters(self):
         self.ui.get_widget('middle_pane_search').set_text('')
         self.ui.get_widget('author_filter').get_selection().unselect_all()
