@@ -605,7 +605,8 @@ class MainGUI:
 
         # drag and drop stuff for notes
         pdf_preview.drag_source_set( gtk.gdk.BUTTON1_MASK, [PDF_PREVIEW_MOVE_NOTE_DND_ACTION], gtk.gdk.ACTION_MOVE )
-        pdf_preview.drag_dest_set( gtk.DEST_DEFAULT_MOTION | gtk.DEST_DEFAULT_HIGHLIGHT | gtk.DEST_DEFAULT_DROP, [PDF_PREVIEW_MOVE_NOTE_DND_ACTION], gtk.gdk.ACTION_MOVE )
+        pdf_preview.drag_source_set_icon_pixbuf(note_icon)
+        pdf_preview.drag_dest_set( gtk.DEST_DEFAULT_ALL, [PDF_PREVIEW_MOVE_NOTE_DND_ACTION], gtk.gdk.ACTION_MOVE )
         pdf_preview.connect('drag-drop', self.handle_pdf_preview_drag_drop_event)
         
         self.ui.get_widget('button_move_previous_page').connect('clicked', lambda x: self.goto_pdf_page( self.pdf_preview['current_page_number']-1 ) )
@@ -1652,7 +1653,7 @@ class MainGUI:
                     my_library_filter_pane.hide()
                     paper_ids = set()
                     for s in search_text.split():
-                        for paper in Paper.objects.filter( Q(title__icontains=s) | Q(doi__icontains=s) | Q(source_session__icontains=s) | Q(abstract__icontains=s) ):
+                        for paper in Paper.objects.filter( Q(title__icontains=s) | Q(doi__icontains=s) | Q(source_session__icontains=s) | Q(abstract__icontains=s) | Q(extracted_text__icontains=s) ):
                             paper_ids.add( paper.id )
                         for sponsor in Sponsor.objects.filter( name__icontains=s ):
                             for paper in sponsor.paper_set.all(): paper_ids.add( paper.id )
@@ -1669,6 +1670,8 @@ class MainGUI:
                             paper_ids.add( reference.referencing_paper.id )
                         for reference in Reference.objects.filter( Q(line_from_referenced_paper__icontains=s) | Q(doi_from_referenced_paper__icontains=s) ):
                             paper_ids.add( reference.referenced_paper.id )
+                        for bookmark in Bookmark.objects.filter( notes__icontains=s ):
+                            paper_ids.add( bookmark.paper.id )
                     papers = Paper.objects.in_bulk( list(paper_ids) ).values()
                 else:
                     if refresh_library_filter_pane:
