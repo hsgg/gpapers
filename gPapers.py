@@ -1763,7 +1763,7 @@ class MainGUI:
                     pango_escape( ', '.join(authors) ), 
                     pango_escape( paper.title ),
                     pango_escape( journal ), 
-                    pango_escape( pub_year ), 
+                    pub_year, 
                     (paper.rating+10)*5, 
                     paper.abstract, 
                     icon, # icon
