@@ -58,6 +58,7 @@ except:
 
 LEFT_PANE_ADD_TO_PLAYLIST_DND_ACTION = ('add_to_playlist', gtk.TARGET_SAME_APP, 0)
 MIDDLE_TOP_PANE_REORDER_PLAYLIST_DND_ACTION = ('reorder_playlist', gtk.TARGET_SAME_WIDGET, 1)
+PDF_PREVIEW_MOVE_NOTE_DND_ACTION = ('move_note', gtk.TARGET_SAME_WIDGET, 2)
 
 try:
     import sqlite3
@@ -601,6 +602,12 @@ class MainGUI:
         self.pdf_preview['scale'] = None
         pdf_preview.connect("expose-event", self.on_expose_pdf_preview)
         pdf_preview.connect("button-press-event", self.handle_pdf_preview_button_press_event)
+
+        # drag and drop stuff for notes
+        pdf_preview.drag_source_set( gtk.gdk.BUTTON1_MASK, [PDF_PREVIEW_MOVE_NOTE_DND_ACTION], gtk.gdk.ACTION_MOVE )
+        pdf_preview.drag_dest_set( gtk.DEST_DEFAULT_MOTION | gtk.DEST_DEFAULT_HIGHLIGHT | gtk.DEST_DEFAULT_DROP, [PDF_PREVIEW_MOVE_NOTE_DND_ACTION], gtk.gdk.ACTION_MOVE )
+        pdf_preview.connect('drag-drop', self.handle_pdf_preview_drag_drop_event)
+        
         self.ui.get_widget('button_move_previous_page').connect('clicked', lambda x: self.goto_pdf_page( self.pdf_preview['current_page_number']-1 ) )
         self.ui.get_widget('button_move_next_page').connect('clicked', lambda x: self.goto_pdf_page( self.pdf_preview['current_page_number']+1 ) )
         self.ui.get_widget('button_zoom_in').connect('clicked', lambda x: self.zoom_pdf_page( -1.2 ) )
@@ -1065,14 +1072,14 @@ class MainGUI:
 
         # are we clicking on a bookmark?
         current_page_number = self.pdf_preview.get('current_page_number')
-        bookmark = None
+        self.current_bookmark = bookmark = None
         if self.displayed_paper and current_page_number>=0:
             for b in self.displayed_paper.bookmark_set.filter( paper=self.displayed_paper, page=current_page_number ):
                 x_delta = x - b.x*pdf_preview.allocation.width
                 y_delta = y - b.y*pdf_preview.allocation.height
                 if x_delta>0 and x_delta<16:
                     if y_delta>0 and y_delta<16:
-                        bookmark = b
+                        self.current_bookmark = bookmark = b
                         
         if event.button == 1 and bookmark:
             self.select_bookmark_pane_item(None, bookmark_id=bookmark.id)
@@ -1091,7 +1098,16 @@ class MainGUI:
                 menu.show_all()
                 menu.popup(None, None, None, event.button, event.get_time())
         
-        return True
+        return bookmark==None # return true if bookmark not defined, to block DND events
+    
+    def handle_pdf_preview_drag_drop_event(self, o1, o2, x, y, o3):
+        if self.current_bookmark:
+            pdf_preview = self.ui.get_widget('pdf_preview')
+            x_percent = 1.0*x/pdf_preview.allocation.width
+            y_percent = 1.0*y/pdf_preview.allocation.height
+            self.current_bookmark.x = x_percent
+            self.current_bookmark.y = y_percent
+            self.current_bookmark.save()
     
     def add_bookmark(self, paper, page, x, y):
         bookmark = Bookmark.objects.create( paper=paper, page=page, x=x, y=y )
@@ -1516,8 +1532,8 @@ class MainGUI:
             toolbar_bookmarks.insert( button, -1 )
         
         
-    def echo_objects(self, a=None, b=None, c=None):
-        print a,b,c
+    def echo_objects(self, a=None, b=None, c=None, d=None, e=None, f=None, g=None):
+        print a,b,c,d,e,f,g
         
     def update_paper_notes(self, text_buffer, id):
         paper = Paper.objects.get(id=id)
