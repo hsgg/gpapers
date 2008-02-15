@@ -74,7 +74,7 @@ def _decode_htmlentities(string):
 def html_strip(s):
     return _decode_htmlentities( p_whitespace.sub( ' ', str(s).replace('&nbsp;', ' ').strip() ) )
 
-def pango_excape(s):
+def pango_escape(s):
     return s.replace('&','&amp;').replace('>','&gt;').replace('<','&lt;')
 
 def get_md5_hexdigest_from_data(data):
@@ -287,7 +287,7 @@ def import_citation(url, paper=None, callback=None):
     gtk.gdk.threads_enter()
     error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
     error.connect('response', lambda x,y: error.destroy())
-    error.set_markup('<b>No Paper Found</b>\n\nThe given URL does not appear to contain or link to any PDF files. (perhaps you have it buy it?) Try downloading the file and adding it using "File &gt;&gt; Import..."\n\n%s' % pango_excape(url))
+    error.set_markup('<b>No Paper Found</b>\n\nThe given URL does not appear to contain or link to any PDF files. (perhaps you have it buy it?) Try downloading the file and adding it using "File &gt;&gt; Import..."\n\n%s' % pango_escape(url))
     error.run()
     gtk.gdk.threads_leave()
     if active_threads.has_key( thread.get_ident() ):

@@ -123,7 +123,8 @@ os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 from django.db.models import Q
 from gPapers.models import *
 import importer
-from importer import ACM_BASE_URL, IEEE_BASE_URL, html_strip, pango_excape, get_md5_hexdigest_from_data
+from importer import pango_escape
+from importer import ACM_BASE_URL, IEEE_BASE_URL, html_strip, pango_escape, get_md5_hexdigest_from_data
 
 
 
@@ -141,7 +142,8 @@ TEST_IMPORT_URLS = [
 
 
 
-note_icon = gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'note.png' ) )
+NOTE_ICON = gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'note.png' ) )
+BOOKMARK_ICON = gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'bookmark.png' ) )
 
 def humanize_count(x, s, p, places=1):
     output = []
@@ -519,7 +521,7 @@ class MainGUI:
                 gtk.gdk.threads_enter()
                 dialog = gtk.MessageDialog( type=gtk.MESSAGE_INFO, buttons=gtk.BUTTONS_OK )
                 dialog.connect('response', lambda x,y: dialog.destroy())
-                dialog.set_markup('<b>Output from SVN:</b>\n\n%s\n\n(restart for changes to take effect)' % ( pango_excape(output) ))
+                dialog.set_markup('<b>Output from SVN:</b>\n\n%s\n\n(restart for changes to take effect)' % ( pango_escape(output) ))
                 dialog.show_all()
                 response = dialog.run()
                 gtk.gdk.threads_leave()
@@ -605,7 +607,7 @@ class MainGUI:
 
         # drag and drop stuff for notes
         pdf_preview.drag_source_set( gtk.gdk.BUTTON1_MASK, [PDF_PREVIEW_MOVE_NOTE_DND_ACTION], gtk.gdk.ACTION_MOVE )
-        pdf_preview.drag_source_set_icon_pixbuf(note_icon)
+        pdf_preview.drag_source_set_icon_pixbuf(NOTE_ICON)
         pdf_preview.drag_dest_set( gtk.DEST_DEFAULT_ALL, [PDF_PREVIEW_MOVE_NOTE_DND_ACTION], gtk.gdk.ACTION_MOVE )
         pdf_preview.connect('drag-drop', self.handle_pdf_preview_drag_drop_event)
         
@@ -696,7 +698,10 @@ class MainGUI:
             for bookmark in Bookmark.objects.filter( paper=self.displayed_paper, page=self.pdf_preview.get('current_page_number') ):
                 x_pos = int( bookmark.x*widget.allocation.width )
                 y_pos = int( bookmark.y*widget.allocation.height )
-                widget.window.draw_pixbuf( None, note_icon, 0,0, x_pos, y_pos )
+                if bookmark.notes:
+                    widget.window.draw_pixbuf( None, NOTE_ICON, 0,0, x_pos, y_pos )
+                else:
+                    widget.window.draw_pixbuf( None, BOOKMARK_ICON, 0,0, x_pos, y_pos )
         
         
     def init_my_library_filter_pane(self):
@@ -784,14 +789,7 @@ class MainGUI:
         # id, page, title, updated, words
         self.treeview_bookmarks_model = gtk.ListStore( int, int, str, str, int )
         treeview_bookmarks.set_model( self.treeview_bookmarks_model )
-        #treeview_bookmarks.connect('button-press-event', self.handle_middle_top_pane_button_press_event)
-        renderer = gtk.CellRendererSpin()
-        renderer.set_property( 'adjustment', gtk.Adjustment(value=0, lower=0, upper=1000, step_incr=1, page_incr=10, page_size=10) )
-        renderer.set_property("editable", True)
-#        renderer.connect( 'edited', lambda cellrenderertext, path, new_text: self.organizations_model.set_value( self.organizations_model.get_iter(path), 1, new_text ) or self.update_organization_name( self.organizations_model.get_value( self.organizations_model.get_iter(path), 0 ), new_text ) )
-        renderer.connect( 'edited', lambda cellrenderertext, path, new_text: self.treeview_bookmarks_model.set_value( self.treeview_bookmarks_model.get_iter(path), 1, int(new_text) ) or self.save_bookmark_page( self.treeview_bookmarks_model.get_value( self.treeview_bookmarks_model.get_iter(path), 0), int(new_text) ) )
-        column = gtk.TreeViewColumn("Page", renderer, markup=1)
-#        column.set_cell_data_func(renderer, self.save_bookmark_page) 
+        column = gtk.TreeViewColumn("Page", gtk.CellRendererText(), markup=1)
         column.connect('clicked', sort_model_by_column, self.treeview_bookmarks_model, 1)
         treeview_bookmarks.append_column( column )
         column = gtk.TreeViewColumn("Title", gtk.CellRendererText(), markup=2)
@@ -1084,11 +1082,32 @@ class MainGUI:
                         
         if event.button == 1 and bookmark:
             self.select_bookmark_pane_item(None, bookmark_id=bookmark.id)
+            if bookmark.notes:
+                pdf_preview.drag_source_set_icon_pixbuf(NOTE_ICON)
+            else:
+                pdf_preview.drag_source_set_icon_pixbuf(BOOKMARK_ICON)
 
         if event.button == 3:
             if self.displayed_paper and current_page_number>=0:
                 menu = gtk.Menu()
                 if bookmark:
+                    if bookmark.page>0:
+                        menuitem = gtk.MenuItem('Move to previous page')
+                        menuitem.connect( 'activate', lambda x,i: self.move_bookmark( bookmark, page=i ), bookmark.page-1 )
+                        menu.append(menuitem)
+                    if bookmark.page<self.pdf_preview['n_pages']-1:
+                        menuitem = gtk.MenuItem('Move to next page')
+                        menuitem.connect( 'activate', lambda x,i: self.move_bookmark( bookmark, page=i ), bookmark.page+1 )
+                        menu.append(menuitem)
+                    if self.pdf_preview['n_pages']>1:
+                        menuitem = gtk.MenuItem('Move to page')
+                        submenu = gtk.Menu()
+                        for i in range(0,self.pdf_preview['n_pages']):
+                            submenu_item = gtk.MenuItem( str(i+1) )
+                            submenu_item.connect( 'activate', lambda x, i: self.move_bookmark( bookmark, i ), i )
+                            submenu.append( submenu_item )
+                        menuitem.set_submenu(submenu)
+                        menu.append(menuitem)
                     delete = gtk.ImageMenuItem(stock_id=gtk.STOCK_DELETE)
                     delete.connect( 'activate', lambda x: self.delete_bookmark(bookmark.id) )
                     menu.append(delete)
@@ -1115,6 +1134,17 @@ class MainGUI:
         bookmark.save()
         self.update_bookmark_pane_from_paper( self.displayed_paper )
         self.select_bookmark_pane_item(None, bookmark_id=bookmark.id)  
+        
+    def move_bookmark(self, bookmark, page=None, x=None, y=None):
+        if bookmark:
+            if page!=None:
+                bookmark.page = page
+            if x!=None:
+                bookmark.x = x
+            if y!=None:
+                bookmark.y = y
+            bookmark.save()
+            self.update_bookmark_pane_from_paper( self.displayed_paper )
         
     def handle_middle_top_pane_button_press_event(self, treeview, event):
         if event.button == 3:
@@ -1319,17 +1349,17 @@ class MainGUI:
             except:
                 paper = None
             if liststore[rows[0]][2]:
-                self.paper_information_pane_model.append(( '<b>Title:</b>', pango_excape( liststore[rows[0]][2] ) ,))
+                self.paper_information_pane_model.append(( '<b>Title:</b>', liststore[rows[0]][2] ,))
             if liststore[rows[0]][1]:
-                self.paper_information_pane_model.append(( '<b>Authors:</b>', pango_excape( liststore[rows[0]][1] ) ,))
+                self.paper_information_pane_model.append(( '<b>Authors:</b>', liststore[rows[0]][1] ,))
             if liststore[rows[0]][3]:
-                self.paper_information_pane_model.append(( '<b>Journal:</b>', pango_excape( liststore[rows[0]][3] ) ,))
+                self.paper_information_pane_model.append(( '<b>Journal:</b>', liststore[rows[0]][3] ,))
             if liststore[rows[0]][9]:
-                self.paper_information_pane_model.append(( '<b>DOI:</b>', pango_excape( liststore[rows[0]][9] ) ,))
+                self.paper_information_pane_model.append(( '<b>DOI:</b>', pango_escape( liststore[rows[0]][9] ) ,))
             if liststore[rows[0]][13]:
-                self.paper_information_pane_model.append(( '<b>PubMed:</b>', pango_excape( liststore[rows[0]][13] ) ,)) 
+                self.paper_information_pane_model.append(( '<b>PubMed:</b>', pango_escape( liststore[rows[0]][13] ) ,)) 
             if liststore[rows[0]][8]:
-                self.paper_information_pane_model.append(( '<b>Import URL:</b>', pango_excape( liststore[rows[0]][8]) ,)) 
+                self.paper_information_pane_model.append(( '<b>Import URL:</b>', pango_escape( liststore[rows[0]][8]) ,)) 
             status = []
             if paper and os.path.isfile( paper.get_full_text_filename() ):
                 status.append( 'Full text saved in local library.' )
@@ -1338,11 +1368,11 @@ class MainGUI:
                 button.connect( 'clicked', lambda x: paper.open() )
                 paper_information_toolbar.insert( button, -1 )
             if status:
-                self.paper_information_pane_model.append(( '<b>Status:</b>', pango_excape( '\n'.join(status) ) ,))
+                self.paper_information_pane_model.append(( '<b>Status:</b>', pango_escape( '\n'.join(status) ) ,))
 #            if paper.source:
 #                description.append( 'Source:  %s %s (pages: %s)' % ( str(paper.source), paper.source_session, paper.source_pages ) )
             if liststore[rows[0]][6]:
-                self.paper_information_pane_model.append(( '<b>Abstract:</b>', pango_excape( liststore[rows[0]][6] ) ,))
+                self.paper_information_pane_model.append(( '<b>Abstract:</b>', pango_escape( liststore[rows[0]][6] ) ,))
 #            description.append( '' )
 #            description.append( 'References:' )
 #            for ref in paper.reference_set.all():
@@ -1374,7 +1404,7 @@ class MainGUI:
                     else: col1 = ''
                     if references[i].url_from_referencing_paper and not references[i].referenced_paper:
                         importable_references.add( references[i] )
-                    self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ pango_excape( references[i].line_from_referencing_paper ) ) )
+                    self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ pango_escape( references[i].line_from_referencing_paper ) ) )
                 importable_citations = set()
                 citations = paper.citation_set.order_by('id')
 #                self.paper_information_pane_model.append(( '<b>Citations:</b>', '\n'.join( [ '<i>'+ str(i) +':</i> '+ citations[i].line_from_referenced_paper for i in range(0,len(citations)) ] ) ,))
@@ -1383,7 +1413,7 @@ class MainGUI:
                     else: col1 = ''
                     if citations[i].url_from_referenced_paper and not citations[i].referencing_paper:
                         importable_citations.add( citations[i] )
-                    self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ pango_excape( citations[i].line_from_referenced_paper ) ) )
+                    self.paper_information_pane_model.append(( col1, '<i>'+ str(i+1) +':</i> '+ pango_escape( citations[i].line_from_referenced_paper ) ) )
 
                 self.update_bookmark_pane_from_paper(self.displayed_paper)
 
@@ -1474,7 +1504,7 @@ class MainGUI:
             for bookmark in paper.bookmark_set.order_by('page'):
                 try: title = str(bookmark.notes).split('\n')[0]
                 except: title = str(bookmark.notes)
-                self.treeview_bookmarks_model.append( (bookmark.id, bookmark.page, title, bookmark.updated.strftime(DATE_FORMAT), len(str(bookmark.notes).split())) )
+                self.treeview_bookmarks_model.append( (bookmark.id, bookmark.page+1, title, bookmark.updated.strftime(DATE_FORMAT), len(str(bookmark.notes).split())) )
         self.refresh_pdf_preview_pane()
         self.select_bookmark_pane_item()
         
@@ -1729,10 +1759,11 @@ class MainGUI:
                     journal = ''
                     pub_year = ''
                 rows.append( ( 
-                    paper.id, ', '.join(authors), 
-                    paper.title,
-                    journal, 
-                    pub_year, 
+                    paper.id,
+                    pango_escape( ', '.join(authors) ), 
+                    pango_escape( paper.title ),
+                    pango_escape( journal ), 
+                    pango_escape( pub_year ), 
                     (paper.rating+10)*5, 
                     paper.abstract, 
                     icon, # icon
@@ -1796,10 +1827,10 @@ class MainGUI:
                         icon = None
                     row = ( 
                         paper_id, # paper id 
-                        authors, # authors 
-                        title, # title 
-                        ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[3].div.contents if len(html_strip(x.string).replace('\n','').replace('\r','').replace('\t',''))] ), # journal 
-                        html_strip( tds[1].string )[-4:], # year 
+                        pango_escape( authors ), # authors 
+                        pango_escape( title ), # title 
+                        pango_escape( ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[3].div.contents if len(html_strip(x.string).replace('\n','').replace('\r','').replace('\t',''))] ) ), # journal 
+                        pango_escape( html_strip( tds[1].string )[-4:] ), # year 
                         0, # ranking
                         ' '.join( [html_strip(x.string).replace('\n','').replace('\r','').replace('\t','') for x in tds[-1].findAll() if x.string] ), # abstract
                         icon, # icon
@@ -1859,9 +1890,9 @@ class MainGUI:
                             icon = None
                         row = ( 
                             paper_id, # paper id 
-                            authors, # authors 
-                            title, # title 
-                            html_strip( tds[1].contents[5].string ), # journal 
+                            pango_escape( authors ), # authors 
+                            pango_escape( title ), # title 
+                            pango_escape( html_strip( tds[1].contents[5].string ) ), # journal 
                             '', # year 
                             0, # ranking
                             '', # abstract
@@ -1959,10 +1990,10 @@ class MainGUI:
                         except: year = ''
                         row = ( 
                             paper_id, # paper id 
-                            ', '.join(authors), # authors 
-                            html_strip( node.find('articletitle').string ), # title 
-                            journal, # journal 
-                            year, # year 
+                            pango_escape( ', '.join(authors) ), # authors 
+                            pango_escape( html_strip( node.find('articletitle').string ) ), # title 
+                            pango_escape( journal ), # journal 
+                            pango_escape( year ), # year 
                             0, # ranking
                             abstract, # abstract
                             icon, # icon
@@ -2031,10 +2062,10 @@ class MainGUI:
                         except: abstract = ''
                         row = ( 
                             paper_id, # paper id 
-                            authors, # authors 
-                            title, # title 
-                            journal, # journal 
-                            year, # year 
+                            pango_escape( authors ), # authors 
+                            pango_escape( title ), # title 
+                            pango_escape( journal ), # journal 
+                            pango_escape( year ), # year 
                             0, # ranking
                             abstract, # abstract
                             icon, # icon
