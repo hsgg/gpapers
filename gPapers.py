@@ -144,6 +144,7 @@ TEST_IMPORT_URLS = [
 
 NOTE_ICON = gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'note.png' ) )
 BOOKMARK_ICON = gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'bookmark.png' ) )
+GRAPH_ICON = gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'drawing.png' ) )
 
 def humanize_count(x, s, p, places=1):
     output = []
@@ -491,6 +492,8 @@ class MainGUI:
         self.ui.get_widget('menuitem_preferences').connect('activate', lambda x: PreferencesGUI())
         self.ui.get_widget('menuitem_import_test_urls').connect('activate', lambda x: fetch_citations_via_urls( TEST_IMPORT_URLS ) )
         self.ui.get_widget('menuitem_import_bibtex').connect('activate', self.import_bibtex)
+        self.ui.get_widget('menuitem_author_graph').connect('activate', lambda x: self.graph_authors() )
+        self.ui.get_widget('menuitem_paper_graph').connect('activate', lambda x: self.graph_papers() )
         self.ui.get_widget('menuitem_about').connect('activate', self.show_about_dialog )
         self.ui.get_widget('menuitem_check_updates').connect('activate', lambda x: self.check_for_updates() )
         
@@ -1190,6 +1193,20 @@ class MainGUI:
                     edit = gtk.ImageMenuItem(stock_id=gtk.STOCK_EDIT)
                     edit.connect( 'activate', lambda x: AuthorEditGUI(id) )
                     menu.append(edit)
+                    edit = gtk.MenuItem('Colleague Graph...')
+                    edit.connect( 'activate', lambda x: self.graph_authors([id]) )
+                    menu.append(edit)
+
+                    menuitem = gtk.MenuItem('Connect to...')
+                    submenu = gtk.Menu()
+                    for author in Author.objects.order_by('name'):
+                        if author.id!=id:
+                            menu_item = gtk.MenuItem( truncate_long_str(author.name) )
+                            menu_item.connect( 'activate', lambda x, author, id: AuthorEditGUI(id).connect(author, id), author, id )
+                            submenu.append( menu_item )
+                    menuitem.set_submenu(submenu)
+                    menu.append(menuitem)
+                    
                     delete = gtk.ImageMenuItem(stock_id=gtk.STOCK_DELETE)
                     delete.connect( 'activate', lambda x: self.delete_author(id) )
                     menu.append(delete)
@@ -1460,6 +1477,14 @@ class MainGUI:
                         import_button_menu.append( menu_item )
                     import_button_menu.show_all()
                     import_button.set_menu( import_button_menu )
+
+                    button = gtk.ToolButton() # GRAPH_ICON
+                    icon = gtk.Image()
+                    icon.set_from_pixbuf( GRAPH_ICON )
+                    button.set_icon_widget( icon )
+                    button.set_tooltip(gtk.Tooltips(),  'Generate document graph...' )
+                    button.connect( 'clicked', lambda x: self.graph_papers_and_authors([paper.id]) )
+                    paper_information_toolbar.insert( button, -1 )
             
         else:
             self.update_bookmark_pane_from_paper(None)
@@ -1491,10 +1516,90 @@ class MainGUI:
                 button.connect( 'clicked', lambda x: self.create_playlist( selected_valid_paper_ids ) )
                 paper_information_toolbar.insert( button, -1 )
 
+                button = gtk.ToolButton() # GRAPH_ICON
+                icon = gtk.Image()
+                icon.set_from_pixbuf( GRAPH_ICON )
+                button.set_icon_widget( icon )
+                button.set_tooltip(gtk.Tooltips(),  'Generate document graph...' )
+                button.connect( 'clicked', lambda x: self.graph_papers_and_authors(selected_valid_paper_ids) )
+                paper_information_toolbar.insert( button, -1 )
+                
+
         self.pdf_preview['current_page_number'] = 0
         self.refresh_pdf_preview_pane()
 
         paper_information_toolbar.show_all()
+        
+    def graph_papers_and_authors(self, paper_ids=None):
+        print 'paper_ids', paper_ids
+        g = []
+        g.append('graph G {')
+        g.append('\toverlap=false;')
+        g.append('\tnode [shape=box,style=filled,fillcolor=lightgray,fontsize=10,fontname=loma];')
+        #g.append('\tsize ="10,10";')
+        if paper_ids:
+            papers = Paper.objects.in_bulk(paper_ids).values()
+        else:
+            papers = Paper.objects.all()
+        for paper in papers:
+            short_title = truncate_long_str(str(paper.id)+': '+paper.title, max_length=32)
+            for author in paper.authors.all():
+                g.append('\t{node [shape=oval,style=filled] "%s"};' % (author.name))
+                g.append('\t"%s" -- "%s";' % (short_title, author.name))
+        g.append('}')
+        self.show_graph( '\n'.join(g) )
+        
+    def graph_authors(self, author_ids=None):
+        g = []
+        g.append('graph G {')
+        g.append('\toverlap=false;')
+        g.append('\tnode [style=filled,fillcolor=lightgray,fontsize=10,fontname=loma];')
+        #g.append('\tsize ="10,10";')
+        if author_ids:
+            authors = Author.objects.in_bulk(author_ids).values()
+        else:
+            authors = Author.objects.all()
+        print authors
+        for a1 in authors:
+            for paper in a1.paper_set.all():
+                for a2 in paper.authors.all():
+                    if a1!=a2:
+                        #g.append('\t{node [shape=oval,style=filled] "%s"};' % (a.name))
+                        g.append('\t"%s" -- "%s";' % (a1.name, a2.name))
+        g.append('}')
+        self.show_graph( '\n'.join(g) )
+        
+    def graph_papers(self, paper_ids=None):
+        g = []
+        g.append('digraph G {')
+        g.append('\toverlap=false;')
+        g.append('\tnode [shape=box,style=filled,fillcolor=lightgray,fontsize=10,fontname=loma];')
+        #g.append('\tsize ="10,10";')
+        if paper_ids:
+            papers = Paper.objects.in_bulk(paper_ids).values()
+        else:
+            papers = Paper.objects.all()
+        for paper in papers:
+            for reference in paper.reference_set.all():
+                if reference.referenced_paper:
+                    g.append('\t"%s" -> "%s";' % (truncate_long_str(str(paper.id)+': '+paper.title, max_length=32), truncate_long_str(str(reference.referenced_paper.id)+': '+reference.referenced_paper.title, max_length=32)))
+#                elif reference.doi_from_referenced_paper:
+#                    g.append('\t"%s" -> "%s";' % (truncate_long_str(str(paper.id)+': '+paper.title, max_length=32), reference.doi_from_referenced_paper))
+#                else:
+#                    g.append('\t"%s" -> "%s";' % (truncate_long_str(str(paper.id)+': '+paper.title, max_length=32), 'R:'+str(reference.id)))
+        g.append('}')
+        self.show_graph( '\n'.join(g) )
+        
+    def show_graph(self, graph, command='neato'):
+        import tempfile
+        file = tempfile.mktemp('.pdf')
+        stdin, stdout = os.popen4( command+' -Tpdf -o"%s"' % file )
+        stdin.write( graph )
+        stdin.close()
+        stdout.readlines()
+        stdout.close()
+        time.sleep(.1)
+        desktop.open(file)
         
     def update_bookmark_pane_from_paper(self, paper):
         toolbar_bookmarks = self.ui.get_widget('toolbar_bookmarks')
