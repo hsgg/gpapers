@@ -1560,12 +1560,14 @@ class MainGUI:
         else:
             authors = Author.objects.all()
         print authors
+        seen_relationships = set()
         for a1 in authors:
             for paper in a1.paper_set.all():
                 for a2 in paper.authors.all():
-                    if a1!=a2:
+                    if a1!=a2 and (a2.id,paper.id,a1.id) not in seen_relationships:
                         #g.append('\t{node [shape=oval,style=filled] "%s"};' % (a.name))
                         g.append('\t"%s" -- "%s";' % (a1.name, a2.name))
+                        seen_relationships.add( (a1.id,paper.id,a2.id) )
         g.append('}')
         self.show_graph( '\n'.join(g) )
         
