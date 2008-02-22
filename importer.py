@@ -44,6 +44,8 @@ p_bibtex = re.compile( '[@][a-z]+[\s]*{([^<]*)}', re.IGNORECASE | re.DOTALL )
 p_whitespace = re.compile( '[\s]+')
 p_doi = re.compile( 'doi *: *(10.[a-z0-9]+/[a-z0-9.]+)', re.IGNORECASE )
 
+# set our google scholar prefs (cookie-based)
+thread.start_new_thread( openanything.fetch, ('http://scholar.google.com/scholar_setprefs?num=100&scis=yes&scisf=4&submit=Save+Preferences',) )
 
 def latex2unicode(s):
     """    
@@ -72,6 +74,8 @@ def _decode_htmlentities(string):
     return entity_re.subn(_substitute_entity, string)[0]
 
 def html_strip(s):
+    if isinstance(s,BeautifulSoup.Tag):
+        s = ''.join( [ html_strip(x) for x in s.contents ] )
     return _decode_htmlentities( p_whitespace.sub( ' ', str(s).replace('&nbsp;', ' ').strip() ) )
 
 def pango_escape(s):
@@ -167,7 +171,7 @@ def get_or_create_paper_via( id=None, doi=None, pubmed_id=None, import_url=None,
 def update_paper_from_bibtex_html( paper, html ):
     
     # ieee puts <br>s in their bibtex
-    html = html.replace('<br>','')
+    html = html.replace('<br>','\n')
     
     match = p_bibtex.search( html )
     if match:
@@ -245,7 +249,7 @@ def import_citation(url, paper=None, callback=None):
     active_threads[ thread.get_ident() ] = 'importing: '+ url
     try:
         params = openanything.fetch(url)
-        if params['status']!=200 and params['status']!=302 :
+        if params['status']!=200 and params['status']!=302:
             print thread.get_ident(), 'unable to download: %s  (%i)' % ( url, params['status'] )
 #            gtk.gdk.threads_enter()
 #            error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
@@ -253,14 +257,42 @@ def import_citation(url, paper=None, callback=None):
 #            error.run()
 #            gtk.gdk.threads_leave()
             return
+        
+        if params['data'].startswith('%PDF'):
+            # this is a pdf file
+            filename = params['url'][ params['url'].rfind('/')+1 : ]
+            # strip params
+            if filename.find('?')>0: filename = filename[ : filename.find('?') ]
+            data = params['data']
+            print thread.get_ident(), 'importing paper =', filename
+            
+            if not paper:
+                md5_hexdigest = get_md5_hexdigest_from_data( data )
+                paper, created = get_or_create_paper_via( full_text_md5=md5_hexdigest )
+                if created:
+                    #paper.title = filename
+                    paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
+                    paper.import_url = url
+                    paper.save()
+                    print thread.get_ident(), 'imported paper =', filename
+                else:
+                    print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.get_authors_in_order()
+            else:
+                paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
+                paper.import_url = url
+                paper.save()
+            return paper
+        
         if params['url'].startswith('http://portal.acm.org/citation'):
             paper = _import_acm_citation(params, paper=paper)
             if paper and callback: callback()
             return paper
+
 #        if params['url'].startswith('http://dx.doi.org'):
 #            paper = import_unknown_citation(params)
 #            if paper and refresh_after: main_gui.refresh_middle_pane_search()
 #            return paper
+
         if params['url'].startswith('http://ieeexplore.ieee.org'):
             if params['url'].find('search/wrapper.jsp')>-1:
                 paper = _import_ieee_citation( openanything.fetch( params['url'].replace('search/wrapper.jsp','xpls/abs_all.jsp') ), paper=paper )
@@ -270,6 +302,11 @@ def import_citation(url, paper=None, callback=None):
                 if paper and callback: callback()
             return paper
         
+        if params['url'].startswith('http://scholar.google.com'):
+            paper = _import_google_scholar_citation(params, paper=paper)
+            if paper and callback: callback()
+            return paper
+
         # let's see if there's a pdf somewhere in here...
         paper = _import_unknown_citation(params, params['url'], paper=paper)
         if paper and callback:callback()
@@ -496,17 +533,12 @@ def _import_acm_citation(params, paper=None):
         return paper
     except:
         traceback.print_exc()
-        if paper:
-            paper.delete()
 
 
 def _import_ieee_citation(params, paper=None):
     print thread.get_ident(), 'downloading ieee citation:', params['url']
     try:
         print thread.get_ident(), 'parsing...'
-        file = open('import.html','w')
-        file.write( params['data'] )
-        file.close()
         soup = BeautifulSoup.BeautifulSoup( params['data'].replace('<!-BMS End-->','').replace('<in>','') )
         
         print soup.find('span', attrs={'class':'headNavBlueXLarge2'})
@@ -578,14 +610,151 @@ def _import_ieee_citation(params, paper=None):
         return paper
     except:
         traceback.print_exc()
-        if paper:
-            paper.delete()
+
+def _import_google_scholar_citation(params, paper=None):
+    print thread.get_ident(), 'downloading google scholar citation:', params['url']
+    try:
+        print thread.get_ident(), 'parsing...'
+        soup = BeautifulSoup.BeautifulSoup( params['data'] )
+        
+        # search for bibtex link
+        def f(paper):
+            for a in soup.findAll('a'):
+                for c in a.contents:
+                    if str(c).lower().find('bibtex')!=-1:
+                        print thread.get_ident(), 'found bibtex link:', a
+                        params_bibtex = openanything.fetch( 'http://scholar.google.com'+a['href'] )
+                        if params_bibtex['status']==200 or params_bibtex['status']==302:
+                            paper = update_paper_from_bibtex_html( paper, params_bibtex['data'] )
+                            return
+        f(paper)
+        
+        find_and_attach_pdf( paper, urls=[ x['href'] for x in soup.findAll('a', onmousedown=True) ] )
+                    
+        print thread.get_ident(), 'imported paper =', paper.id, paper.doi, paper.title, paper.get_authors_in_order()
+        return paper
+    except:
+        traceback.print_exc()
 
 p_html_a = re.compile( "<a [^>]+>" , re.IGNORECASE)
 p_html_a_href = re.compile( '''href *= *['"]([^'^"]+)['"]''' , re.IGNORECASE)
 
 def _import_unknown_citation(params, orig_url, paper=None):
+    
+    # strip down to just the body (malformed comments like you find in script tags make soup barf)
+    data = params['data']
+    index = data.lower().find('<body>')
+    if index>0: data = data[ index+6 : ]
+    index = data.lower().find('</body>')
+    if index>0: data = data[ : index ]
+    
+    # soupify
+    soup = BeautifulSoup.BeautifulSoup( data )
+    
+    # search for bibtex link
+    for a in soup.findAll('a'):
+        for c in a.contents:
+            if str(c).lower().find('bibtex')!=-1:
+                print thread.get_ident(), 'found bibtex link:', a
+    
+    # search for ris link 
+    for a in soup.findAll('a'):
+        href = a['href']
+        if href.find('?')>0: href = href[ : href.find('?') ]
+        if href.lower().endswith('.ris'):
+            print thread.get_ident(), 'found ris link:', a
+            break
+        for c in a.contents:
+            c = str(c).lower()
+            if c.find('refworks')!=-1 or c.find('procite')!=-1 or c.find('refman')!=-1 or c.find('endnote')!=-1:
+                print thread.get_ident(), 'found ris link:', a
+    
+    # search for pdf link
+    for a in soup.findAll('a'):
+        href = a['href']
+        if href.find('?')>0: href = href[ : href.find('?') ]
+        if href.lower().endswith('pdf'):
+            print thread.get_ident(), 'found pdf link:', a
+            break
+        for c in a.contents:
+            c = str(c).lower()
+            if c.find('pdf')!=-1:
+                print thread.get_ident(), 'found pdf link:', a
+    
 
+def find_and_attach_pdf(paper, urls, visited_urls=set() ):
+
+    # search for a PDF linked directly
+    for url in urls:
+        if url.find('?')>0: url = url[ : url.find('?') ]
+        if url.lower().endswith('pdf'):
+            print thread.get_ident(), 'found pdf link:', url
+            visited_urls.add(url)
+            params = openanything.fetch(url)
+            if params['status']==200 or params['status']==302 :
+                if params['data'].startswith('%PDF'):
+                    # we have a live one!
+                    try:
+                        filename = params['url'][ params['url'].rfind('/')+1 : ]
+                        print thread.get_ident(), 'importing paper =', filename
+                        paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', params['data'] )
+                        paper.save()
+                        return True
+                    except:
+                        traceback.print_exc()
+                    
+    for url in urls:
+        visited_urls.add(url)
+        params = openanything.fetch(url)
+        if params['status']==200 or params['status']==302 :
+            if params['data'].startswith('%PDF'):
+                # we have a live one!
+                try:
+                    filename = params['url'][ params['url'].rfind('/')+1 : ]
+                    print thread.get_ident(), 'importing paper =', filename
+                    paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', params['data'] )
+                    paper.save()
+                    return True
+                except:
+                    traceback.print_exc()
+            else:
+                soup = BeautifulSoup.BeautifulSoup( params['data'] )
+                promising_links = set()
+                for a in soup.findAll('a',href=True):
+                    if len(a.contents)>8: continue
+                    web_dir_root = params['url'][: params['url'].find('/',8) ]
+                    web_dir_current = params['url'][: params['url'].rfind('/') ]
+                    href = a['href']
+                    if not href.lower().startswith('http'):
+                        if href.startswith('/'):
+                            href = web_dir_root + href
+                        else:
+                            href = web_dir_current +'/'+ href
+                    x = href
+                    if x.find('?')>0: x = x[ : x.find('?') ]
+                    if x.lower().endswith('pdf'):
+                        if href not in visited_urls:
+                            print thread.get_ident(), 'found pdf link:', a
+                            promising_links.add( href )
+                            continue
+                    for c in a.contents:
+                        c = str(c).lower()
+                        if c.find('pdf')!=-1:
+                            if href not in visited_urls:
+                                print thread.get_ident(), 'found pdf link:', a
+                                promising_links.add( href )
+                                continue
+                if promising_links: print promising_links
+                if find_and_attach_pdf(paper, list(promising_links), visited_urls=visited_urls ): return
+            
+                
+        
+        
+    
+    
+    
+def _import_unknown_citation_old(params, orig_url, paper=None):
+    
     if params['data'].startswith('%PDF'):
 
         # we have a live one!
@@ -626,8 +795,10 @@ def _import_unknown_citation(params, orig_url, paper=None):
                 except:
                     print thread.get_ident(), 'couldn\'t figure out href from link:', a
                     continue
+                # strip params
                 if href.find('?')>0:
                     href = href[ : href.find('?') ]
+                # normalize to fully qualified name
                 if not href.lower().startswith('http'):
                     if href.startswith('/'):
                         href = web_dir_root + href

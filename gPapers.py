@@ -887,6 +887,13 @@ class MainGUI:
             else:
                 icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
             self.left_pane_model.append( self.left_pane_model.get_iter((4),), ( playlist.title, icon, playlist.id, True ) )
+        self.left_pane_model.append( None, ( 'Google Scholar', gtk.gdk.pixbuf_new_from_file( os.path.join( RUN_FROM_DIR, 'icons', 'favicon_google.ico' ) ), -1, False ) )
+        for playlist in Playlist.objects.filter(parent='5'):
+            if playlist.search_text:
+                icon = left_pane.render_icon(gtk.STOCK_FIND, gtk.ICON_SIZE_MENU)
+            else:
+                icon = left_pane.render_icon(gtk.STOCK_DND_MULTIPLE, gtk.ICON_SIZE_MENU)
+            self.left_pane_model.append( self.left_pane_model.get_iter((5),), ( playlist.title, icon, playlist.id, True ) )
         left_pane.expand_all()
         self.ui.get_widget('left_pane').get_selection().select_path((0,))
 
@@ -951,6 +958,8 @@ class MainGUI:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_pubmed, () )
         if rows[0][0]==4:
             self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_citeseer, () )
+        if rows[0][0]==5:
+            self.current_middle_top_pane_refresh_thread_ident = thread.start_new_thread( self.refresh_middle_pane_from_google_scholar, () )
         self.select_middle_top_pane_item( self.ui.get_widget('middle_top_pane').get_selection() )
 
     def init_middle_top_pane(self):
@@ -2178,6 +2187,85 @@ class MainGUI:
                             icon, # icon
                             import_url, # import_url
                             doi, # doi
+                            '', # created
+                            '', # updated
+                            '', # empty_str
+                            '', # pubmed_id
+                        )
+                        rows.append( row )
+                    except: 
+                        #pass
+                        traceback.print_exc()
+                    
+                self.update_middle_top_pane_from_row_list_if_we_are_still_the_preffered_thread(rows)
+            else:
+                gtk.gdk.threads_enter()
+                error = gtk.MessageDialog( type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, flags=gtk.DIALOG_MODAL )
+                error.connect('response', lambda x,y: error.destroy())
+                error.set_markup('<b>Unable to Search External Repository</b>\n\nHTTP Error code: %i' % params['status'])
+                error.run()
+                gtk.gdk.threads_leave()
+        except:
+            traceback.print_exc()
+        if self.active_threads.has_key( thread.get_ident() ):
+            del self.active_threads[ thread.get_ident() ]
+
+    def refresh_middle_pane_from_google_scholar(self):
+        search_text = self.ui.get_widget('middle_pane_search').get_text().strip()
+        if not search_text: return
+        self.active_threads[ thread.get_ident() ] = 'searching google scholar... (%s)' % search_text
+        rows = []
+        try:
+            print 'woot'
+            params = openanything.fetch( 'http://scholar.google.com/scholar?q=%s' % defaultfilters.urlencode( search_text ) )
+            if params['status']==200 or params['status']==302:
+                for html in params['data'].split('<p class=g>')[1:]:
+                    #print '==========================================='
+                    node = BeautifulSoup.BeautifulStoneSoup( html )
+                    #print node.prettify()
+                    try:
+                        title = html_strip( node.findAll('a')[0].string )
+                        year = ''
+                        import_url = node.findAll('a')[0]['href']
+                        for a in node.findAll('a',attrs={'class':'fl'}):
+                            if a['href'].find('cluster')!=-1:
+                                import_url = a['href']
+                        if not import_url.startswith('http'):
+                            import_url = 'http://scholar.google.com'+ import_url
+                        try:
+                            papers = list( Paper.objects.filter( import_url=import_url ) )
+                            papers.extend( Paper.objects.filter( title=title ) )
+                            paper = papers[0]
+                            paper_id = paper.id
+                            if os.path.isfile( paper.get_full_text_filename() ):
+                                icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
+                            else:
+                                icon = None
+                        except:
+                            #traceback.print_exc()
+                            paper = None
+                            paper_id = -1
+                            icon = None
+                        
+                        #x = node.findAll('span', attrs={'class':'a'})[0].split('-')
+                        x = html_strip(node.findAll('span', attrs={'class':'a'})[0]).split('-')
+                        try: authors = x[0].strip()
+                        except: authors = ''
+                        try: journal = x[1].strip()
+                        except: journal = ''
+                        try: abstract = '\n'.join( [ html_strip(x) for x in node.findAll('br')[1:] ] )
+                        except: abstract = ''
+                        row = ( 
+                            paper_id, # paper id 
+                            pango_escape( authors ), # authors 
+                            pango_escape( title ), # title 
+                            pango_escape( journal ), # journal 
+                            pango_escape( year ), # year 
+                            0, # ranking
+                            abstract, # abstract
+                            icon, # icon
+                            import_url, # import_url
+                            '', # doi
                             '', # created
                             '', # updated
                             '', # empty_str
