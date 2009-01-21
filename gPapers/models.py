@@ -286,6 +286,7 @@ class Playlist(models.Model):
         ('5', 'Google Scholar'),
     )
     title = models.CharField(max_length='1024', blank=True)
+    title2 = models.CharField(max_length='1024', blank=True)
     search_text = models.CharField(max_length='1024', blank=True)
     parent = models.CharField(max_length=1, choices=SOURCES)
     papers = models.ManyToManyField(Paper)
