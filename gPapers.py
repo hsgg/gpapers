@@ -329,7 +329,8 @@ def import_document( filename, data=None ):
         paper, created = importer.get_or_create_paper_via( full_text_md5=md5_hexdigest )
         if created:
             #paper.title = filename
-            paper.save_full_text_file( defaultfilters.slugify(os.path.split(filename)[1].replace('.pdf',''))+'.pdf', data )
+#            help(paper.full_text)
+            paper.save_file( defaultfilters.slugify(os.path.split(filename)[1].replace('.pdf',''))+'.pdf', data )
             if not data:
                 paper.import_url = params['url']
             paper.save()

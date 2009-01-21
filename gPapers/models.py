@@ -17,6 +17,7 @@
 
 import md5, os, re, traceback
 from django.db import models
+import django.core.files.base
 import desktop, pyPdf
 
 
@@ -156,11 +157,11 @@ class Paper(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     
-    def _save_FIELD_file(self, field, filename, raw_contents, save=True):
+    def save_file(self, filename, raw_contents, save=True):
         m = md5.new()
         m.update(raw_contents)
         self.full_text_md5 = m.hexdigest()
-        super(Paper, self)._save_FIELD_file(field, filename, raw_contents, save)
+        self.full_text.save(filename, django.core.files.base.ContentFile(raw_contents), save)
         try: self.extract_document_information_from_pdf()
         except: traceback.print_exc()
 
