@@ -623,8 +623,8 @@ class MainGUI:
 
     def refresh_pdf_preview_pane(self):
         pdf_preview = self.ui.get_widget('pdf_preview')
-        if self.displayed_paper and os.path.isfile( self.displayed_paper.get_full_text_filename() ):
-            self.pdf_preview['document'] = poppler.document_new_from_file ('file://'+ self.displayed_paper.get_full_text_filename(), None)
+        if self.displayed_paper and self.displayed_paper.full_text and os.path.isfile( self.displayed_paper.full_text.path ):
+            self.pdf_preview['document'] = poppler.document_new_from_file ('file://'+ self.displayed_paper.full_text.path, None)
             self.pdf_preview['n_pages'] = self.pdf_preview['document'].get_n_pages()
             self.pdf_preview['scale'] = None
             self.goto_pdf_page( self.pdf_preview['current_page_number'], new_doc=True )
@@ -1172,7 +1172,7 @@ class MainGUI:
                 if paper_id>=0: #len(path)==2:
                     menu = gtk.Menu()
                     paper = Paper.objects.get(id=paper_id)
-                    if paper and os.path.isfile( paper.get_full_text_filename() ):
+                    if paper and paper.full_text and os.path.isfile( paper.full_text.path ):
                         button = gtk.ImageMenuItem(gtk.STOCK_OPEN)
                         button.connect( 'activate', lambda x: paper.open() )
                         menu.append(button)
@@ -1387,7 +1387,7 @@ class MainGUI:
             if liststore[rows[0]][8]:
                 self.paper_information_pane_model.append(( '<b>Import URL:</b>', pango_escape( liststore[rows[0]][8]) ,)) 
             status = []
-            if paper and os.path.isfile( paper.get_full_text_filename() ):
+            if paper and paper.full_text and os.path.isfile( paper.full_text.path ):
                 status.append( 'Full text saved in local library.' )
                 button = gtk.ToolButton(gtk.STOCK_OPEN)
                 button.set_tooltip(gtk.Tooltips(), 'Open the full text of this paper in a new window...')
@@ -1861,7 +1861,7 @@ class MainGUI:
                 authors = []
                 for author in paper.authors.order_by('id'):
                     authors.append( str(author.name) )
-                if os.path.isfile( paper.get_full_text_filename() ):
+                if paper.full_text and os.path.isfile( paper.full_text.path ):
                     icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
                 else:
                     icon = None
@@ -1932,7 +1932,7 @@ class MainGUI:
                         papers.extend( Paper.objects.filter(import_url__startswith=import_url_short) )
                         paper = papers[0]
                         paper_id = paper.id
-                        if os.path.isfile( paper.get_full_text_filename() ):
+                        if paper.full_text and os.path.isfile( paper.full_text.path ):
                             icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
                         else:
                             icon = None
@@ -1995,7 +1995,7 @@ class MainGUI:
                         try:
                             paper = Paper.objects.get( title=title )
                             paper_id = paper.id
-                            if os.path.isfile( paper.get_full_text_filename() ):
+                            if paper.full_text and os.path.isfile( paper.full_text.path ):
                                 icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
                             else:
                                 icon = None
@@ -2078,7 +2078,7 @@ class MainGUI:
                         try:
                             paper = Paper.objects.get( title=title, authors__name__exact=authors[0] )
                             paper_id = paper.id
-                            if os.path.isfile( paper.get_full_text_filename() ):
+                            if paper.full_text and os.path.isfile( paper.full_text.path ):
                                 icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
                             else:
                                 icon = None
@@ -2161,7 +2161,7 @@ class MainGUI:
                             papers.extend( Paper.objects.filter( title=title, authors__name__contains=authors.split(', ')[0] ) )
                             paper = papers[0]
                             paper_id = paper.id
-                            if os.path.isfile( paper.get_full_text_filename() ):
+                            if paper.full_text and os.path.isfile( paper.full_text.path ):
                                 icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
                             else:
                                 icon = None
@@ -2237,7 +2237,7 @@ class MainGUI:
                             papers.extend( Paper.objects.filter( title=title ) )
                             paper = papers[0]
                             paper_id = paper.id
-                            if os.path.isfile( paper.get_full_text_filename() ):
+                            if paper.full_text and os.path.isfile( paper.full_text.path ):
                                 icon = self.ui.get_widget('middle_top_pane').render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
                             else:
                                 icon = None
@@ -2689,7 +2689,7 @@ class PaperEditGUI:
         self.ui.get_widget('textview_abstract').get_buffer().set_text( self.paper.abstract )
         self.ui.get_widget('textview_bibtex').get_buffer().set_text( self.paper.bibtex )
         self.ui.get_widget('textview_extracted_text').get_buffer().set_text( self.paper.extracted_text )
-        self.ui.get_widget('filechooserbutton').set_filename( self.paper.get_full_text_filename() )
+        if paper.full_text: self.ui.get_widget('filechooserbutton').set_filename( self.paper.full_text.path )
         self.ui.get_widget('rating').set_value( self.paper.rating )
         self.ui.get_widget('spinbutton_read_count').set_value( self.paper.read_count )
 
@@ -2746,7 +2746,7 @@ class PaperEditGUI:
         treeview_references.connect('button-press-event', self.handle_references_button_press_event)
         references = self.paper.reference_set.order_by('id')
         for i in range(0,len(references)):
-            if references[i].referenced_paper and os.path.isfile( references[i].referenced_paper.get_full_text_filename() ):
+            if references[i].referenced_paper and references[i].referenced_paper.full_text and os.path.isfile( references[i].referenced_paper.full_text.path ):
                 icon = treeview_references.render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
             else:
                 icon = None
@@ -2778,7 +2778,7 @@ class PaperEditGUI:
         treeview_citations.connect('button-press-event', self.handle_citations_button_press_event)
         references = self.paper.citation_set.order_by('id')
         for i in range(0,len(references)):
-            if references[i].referencing_paper and os.path.isfile( references[i].referencing_paper.get_full_text_filename() ):
+            if references[i].referencing_paper and references[i].referencing_paper.full_text and os.path.isfile( references[i].referencing_paper.full_text.path ):
                 icon = treeview_citations.render_icon(gtk.STOCK_DND, gtk.ICON_SIZE_MENU)
             else:
                 icon = None
@@ -2813,7 +2813,7 @@ class PaperEditGUI:
         self.paper.rating = round( self.ui.get_widget('rating').get_value() )
         self.paper.read_count = self.ui.get_widget('spinbutton_read_count').get_value()
         new_file_name = self.ui.get_widget('filechooserbutton').get_filename()
-        if new_file_name and new_file_name!=self.paper.get_full_text_filename():
+        if new_file_name and self.paper.full_text and new_file_name!=self.paper.full_text.path:
             try:
                 ext = new_file_name[ new_file_name.rfind('.')+1: ]
             except:
@@ -2865,7 +2865,7 @@ class PaperEditGUI:
                 if id>=0:
                     reference = Reference.objects.get(id=id)
                     menu = gtk.Menu()
-                    if reference.referenced_paper and os.path.isfile( reference.referenced_paper.get_full_text_filename() ):
+                    if reference.referenced_paper and reference.referenced_paper.full_text and os.path.isfile( reference.referenced_paper.full_text.path ):
                         menu_item = gtk.ImageMenuItem(stock_id=gtk.STOCK_OPEN)
                         menu_item.connect( 'activate', lambda x: reference.referenced_paper.open() )
                         menu.append(menu_item)
@@ -2890,7 +2890,7 @@ class PaperEditGUI:
                 if id>=0:
                     reference = Reference.objects.get(id=id)
                     menu = gtk.Menu()
-                    if reference.referencing_paper and os.path.isfile( reference.referencing_paper.get_full_text_filename() ):
+                    if reference.referencing_paper and reference.referencing_paper.full_text and os.path.isfile( reference.referencing_paper.full_text.path ):
                         menu_item = gtk.ImageMenuItem(stock_id=gtk.STOCK_OPEN)
                         menu_item.connect( 'activate', lambda x: reference.referenced_paper.open() )
                         menu.append(menu_item)
