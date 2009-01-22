@@ -23,6 +23,15 @@ from time import strptime
 #from BeautifulSoup 
 import BeautifulSoup
 
+import deps_checker
+import sqlite3
+from django.template import defaultfilters
+import deseb
+import cairo
+import poppler
+
+
+
 
 RUN_FROM_DIR = os.path.abspath(os.path.dirname(sys.argv[0])) + '/'
 PROGRAM = 'gPapers'
@@ -60,60 +69,6 @@ LEFT_PANE_ADD_TO_PLAYLIST_DND_ACTION = ('add_to_playlist', gtk.TARGET_SAME_APP, 
 MIDDLE_TOP_PANE_REORDER_PLAYLIST_DND_ACTION = ('reorder_playlist', gtk.TARGET_SAME_WIDGET, 1)
 PDF_PREVIEW_MOVE_NOTE_DND_ACTION = ('move_note', gtk.TARGET_SAME_WIDGET, 2)
 
-try:
-    import sqlite3
-except:
-    try:
-        from pysqlite2 import dbapi2 as sqlite3
-    except:
-        traceback.print_exc()
-        print 'could not import required sqlite3 libraries.  try running:'
-        print '\tfor ubuntu or debian: sudo apt-get install python-sqlite3'
-        print '\tfor redhat: yum install python-sqlite3'
-        print 'note that if your distro doesn\'t have python-sqlite3 yet, you can use pysqlite2'
-        sys.exit()
-
-try:
-    from django.template import defaultfilters
-    print 
-    print 'note: django provides a web-based administrative tool for your database.  to use it, uncomment the commented-out lines under INSTALLED_APPS in settings.py and run the following:'
-    print '         ./manage.py runserver'
-    print '      then go to http://127.0.0.1:8000/admin/'
-    print
-except:
-    traceback.print_exc()
-    print 'could not import django [http://www.djangoproject.com/].  try running (from "%s"):' % RUN_FROM_DIR
-    print '\tsvn co http://code.djangoproject.com/svn/django/trunk/django'
-    sys.exit()
-
-try:
-    import deseb
-except:
-    traceback.print_exc()
-    print 'could not import deseb [http://code.google.com/p/deseb/].  try running (from "%s"):' % RUN_FROM_DIR
-    print '\tsvn checkout http://deseb.googlecode.com/svn/trunk/src/deseb'
-    sys.exit()
-    
-try:
-    import cairo
-except:
-    traceback.print_exc()
-    print 'could not import pycairo [http://cairographics.org/pycairo/].  try running (from "%s"):' % RUN_FROM_DIR
-    print '\tsudo apt-get install python-cairo'
-
-try:
-    import poppler
-except:
-    traceback.print_exc()
-    print 'could not import python-poppler [https://code.launchpad.net/~poppler-python/poppler-python/].  try running (from "%s"):' % RUN_FROM_DIR
-    print "\tsudo apt-get install build-essential libpoppler2 libpoppler-dev libpoppler-glib2 libpoppler-glib-dev python-cairo-dev bzr gnome-common python-dev python-gnome2-dev python-gtk2-dev python-gobject-dev python-pyorbit-dev"
-    print '\tbzr branch http://bazaar.launchpad.net/~poppler-python/poppler-python/poppler-0.6-experimental'
-    print '\tcd poppler-0.6-experimental'
-    print '\t./autogen.sh'
-    print '\t./configure'
-    print '\tmake'
-    print '\tsudo make install'
-    sys.exit()
 
 
 import settings
