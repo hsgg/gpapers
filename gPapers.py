@@ -2645,7 +2645,7 @@ class PaperEditGUI:
         self.ui.get_widget('textview_abstract').get_buffer().set_text( self.paper.abstract )
         self.ui.get_widget('textview_bibtex').get_buffer().set_text( self.paper.bibtex )
         self.ui.get_widget('textview_extracted_text').get_buffer().set_text( self.paper.extracted_text )
-        if paper.full_text: self.ui.get_widget('filechooserbutton').set_filename( self.paper.full_text.path )
+        if self.paper.full_text: self.ui.get_widget('filechooserbutton').set_filename( self.paper.full_text.path )
         self.ui.get_widget('rating').set_value( self.paper.rating )
         self.ui.get_widget('spinbutton_read_count').set_value( self.paper.read_count )
 
@@ -2775,7 +2775,7 @@ class PaperEditGUI:
             except:
                 ext = 'unknown'
             full_text_filename = defaultfilters.slugify(self.paper.doi) +'_'+ defaultfilters.slugify(self.paper.title) +'.'+ defaultfilters.slugify(ext)
-            self.paper.save_full_text_file( full_text_filename, open(new_file_name,'r').read() )
+            self.paper.save_file( full_text_filename, open(new_file_name,'r').read() )
 
         self.paper.authors.clear()
         self.authors_model.foreach( lambda model, path, iter: self.paper.authors.add( Author.objects.get(id=model.get_value( iter, 0 )) ) )

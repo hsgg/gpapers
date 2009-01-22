@@ -271,14 +271,14 @@ def import_citation(url, paper=None, callback=None):
                 paper, created = get_or_create_paper_via( full_text_md5=md5_hexdigest )
                 if created:
                     #paper.title = filename
-                    paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
+                    paper.save_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
                     paper.import_url = url
                     paper.save()
                     print thread.get_ident(), 'imported paper =', filename
                 else:
                     print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.get_authors_in_order()
             else:
-                paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
+                paper.save_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
                 paper.import_url = url
                 paper.save()
             return paper
@@ -366,7 +366,7 @@ def _import_acm_citation(params, paper=None):
                         ext = 'unknown'
                     
                     if params_file['data'].startswith('%PDF'):
-                        #paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.pdf', params_file['data'] )
+                        #paper.save_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.pdf', params_file['data'] )
                         full_text_filename = defaultfilters.slugify(doi) +'_'+ defaultfilters.slugify(title) +'.'+ defaultfilters.slugify(ext)
                         full_text_data = params_file['data']
                     elif params_file['data'].find('<!DOCTYPE')>-1 and params_file['data'].find('logfrm')>-1:
@@ -414,7 +414,7 @@ def _import_acm_citation(params, paper=None):
                         ext = params_file['url'][ params_file['url'].rfind('.')+1:]
                         if not ext or len(ext)>5:
                             ext = 'unknown'
-                        #paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params_file['data'] )
+                        #paper.save_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params_file['data'] )
                         full_text_filename = defaultfilters.slugify(doi) +'_'+ defaultfilters.slugify(title) +'.'+ defaultfilters.slugify(ext)
                         full_text_data = params_file['data']
                     #paper.save()
@@ -434,7 +434,7 @@ def _import_acm_citation(params, paper=None):
             )
             if created:
                 if full_text_filename and full_text_data:
-                    paper.save_full_text_file( full_text_filename, full_text_data )
+                    paper.save_file( full_text_filename, full_text_data )
                 paper.save()
             else: 
                 print thread.get_ident(), 'paper already imported'
@@ -445,7 +445,7 @@ def _import_acm_citation(params, paper=None):
             paper.doi = doi
             paper.save()
             if full_text_filename and full_text_data:
-                paper.save_full_text_file( full_text_filename, full_text_data )
+                paper.save_file( full_text_filename, full_text_data )
             
 
         paper.import_url = params['url']
@@ -598,7 +598,7 @@ def _import_ieee_citation(params, paper=None):
                         ext = params['url'][ params['url'].rfind('.')+1:]
                         if not ext or len(ext)>5:
                             ext = 'pdf'
-                        paper.save_full_text_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params['data'] )
+                        paper.save_file( defaultfilters.slugify(paper.doi) +'_'+ defaultfilters.slugify(paper.title) +'.'+ defaultfilters.slugify(ext), params['data'] )
                         paper.save()
                     else:
                         print thread.get_ident(), 'this isn\'t a pdf file:', params['url']
@@ -697,7 +697,7 @@ def find_and_attach_pdf(paper, urls, visited_urls=set() ):
                     try:
                         filename = params['url'][ params['url'].rfind('/')+1 : ]
                         print thread.get_ident(), 'importing paper =', filename
-                        paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', params['data'] )
+                        paper.save_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', params['data'] )
                         paper.save()
                         return True
                     except:
@@ -712,7 +712,7 @@ def find_and_attach_pdf(paper, urls, visited_urls=set() ):
                 try:
                     filename = params['url'][ params['url'].rfind('/')+1 : ]
                     print thread.get_ident(), 'importing paper =', filename
-                    paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', params['data'] )
+                    paper.save_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', params['data'] )
                     paper.save()
                     return True
                 except:
@@ -768,14 +768,14 @@ def _import_unknown_citation_old(params, orig_url, paper=None):
                 paper, created = get_or_create_paper_via( full_text_md5=md5_hexdigest )
                 if created:
                     #paper.title = filename
-                    paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
+                    paper.save_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
                     paper.import_url = orig_url
                     paper.save()
                     print thread.get_ident(), 'imported paper =', filename
                 else:
                     print thread.get_ident(), 'paper already exists: paper =', paper.id, paper.doi, paper.title, paper.get_authors_in_order()
             else:
-                paper.save_full_text_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
+                paper.save_file( defaultfilters.slugify(filename.replace('.pdf',''))+'.pdf', data )
                 paper.import_url = orig_url
                 paper.save()
         except:

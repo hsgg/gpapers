@@ -176,24 +176,24 @@ class Paper(models.Model):
         return author_list
     
     def open(self):
-        if os.path.isfile( self.get_full_text_filename() ):
-            desktop.open( self.get_full_text_filename() )
+        if full_text and os.path.isfile( self.full_text.path ):
+            desktop.open( self.full_text.path )
             self.read_count = self.read_count + 1
             self.save()
 
     def extract_document_information_from_pdf(self, force_overwrite=False):
         """will overwrite the extracted_text and page_count fields, and the title if the title is empty"""
-        if os.path.isfile( self.get_full_text_filename() ):
+        if self.full_text and os.path.isfile( self.full_text.path ):
             content = []
 
             # Load PDF into pyPDF
-            pdf = pyPdf.PdfFileReader(file(self.get_full_text_filename(), "rb"))
+            pdf = pyPdf.PdfFileReader(file(self.full_text.path, "rb"))
             doc_info = pdf.getDocumentInfo()
             content.append( str(doc_info) )
             content.append('\n\n')
             if force_overwrite or not self.title:
                 try: self.title = doc_info['/Title']
-                except: self.title = os.path.split(self.get_full_text_filename())[1]
+                except: self.title = os.path.split(self.full_text.path)[1]
             if force_overwrite or self.authors.count()==0:
                 try:
                     author_text = doc_info['/Author']
@@ -214,7 +214,7 @@ class Paper(models.Model):
             # also has: doc_info['/Author'], doc_info['/ModDate'], doc_info['/CreationDate']
 
             # extract the actual text
-            stdin, stdout = os.popen4( 'ps2txt "%s"' % self.get_full_text_filename() )
+            stdin, stdout = os.popen4( 'ps2txt "%s"' % self.full_text.path )
             for line in stdout:
                 content.append(line)
                 try:
