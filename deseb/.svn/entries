@@ -1,0 +1,58 @@
+8
+
+dir
+150
+http://gpapers.googlecode.com/svn/trunk/deseb
+http://gpapers.googlecode.com/svn
+
+
+
+2009-01-21T22:35:31.200813Z
+145
+public@kered.org
+
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+25a7befd-2f43-0410-a069-7fc8ebf1512b
+
+__init__.py
+file
+
+
+
+
+2010-07-11T01:41:17.000000Z
+104ff000180fb7af11a0146d540dc650
+2009-01-21T22:35:31.200813Z
+145
+public@kered.org
+
+backends
+dir
+
+schema_evolution.py
+file
+
+
+
+
+2010-07-11T01:41:17.000000Z
+884ae2196208c86216820bcf29689756
+2009-01-21T22:35:31.200813Z
+145
+public@kered.org
+
+management
+dir
+
