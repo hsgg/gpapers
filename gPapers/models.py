@@ -36,7 +36,7 @@ class Publisher(models.Model):
     def __unicode__(self):
         return self.name
 
-    
+
 class Source(models.Model):
 
     name = models.CharField(max_length='1024')
@@ -52,7 +52,7 @@ class Source(models.Model):
         if id==self.id:
             return
         other_source = Source.objects.get(id=id)
-        if not self.publisher: 
+        if not self.publisher:
             self.publisher = other_source.publisher
         for paper in other_source.paper_set.all():
             self.paper_set.add( paper )
@@ -87,8 +87,8 @@ class Organization(models.Model):
 
     def __unicode__(self):
         return self.name
-    
-    
+
+
 class Author(models.Model):
 
     name = models.CharField(max_length='1024')
@@ -99,7 +99,7 @@ class Author(models.Model):
     rating = models.IntegerField(default=0)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
-    
+
     def merge(self, id):
         if id==self.id:
             return
@@ -118,8 +118,8 @@ class Author(models.Model):
 
     def __unicode__(self):
         return self.name
-    
-    
+
+
 class Sponsor(models.Model):
 
     name = models.CharField(max_length='1024')
@@ -131,10 +131,10 @@ class Sponsor(models.Model):
 
     def __unicode__(self):
         return self.name
-    
-    
+
+
 class Paper(models.Model):
-    
+
     title = models.CharField(max_length='1024')
     doi = models.CharField(max_length='1024', blank=True)
     pubmed_id = models.CharField(max_length='1024', blank=True)
@@ -156,7 +156,7 @@ class Paper(models.Model):
     bibtex = models.TextField(blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
-    
+
     def save_file(self, filename, raw_contents, save=True):
         m = md5.new()
         m.update(raw_contents)
@@ -174,9 +174,9 @@ class Paper(models.Model):
         for row in rows:
             author_list.append( Author.objects.get(id=row[0]) )
         return author_list
-    
+
     def open(self):
-        if full_text and os.path.isfile( self.full_text.path ):
+        if self.full_text and os.path.isfile( self.full_text.path ):
             desktop.open( self.full_text.path )
             self.read_count = self.read_count + 1
             self.save()
@@ -221,7 +221,7 @@ class Paper(models.Model):
                     self.doi = p_doi.search(line).group(1)
                     print self.doi
                 except: pass
-            
+
             self.extracted_text = ''.join( content )
         else:
             self.page_count = 0
@@ -233,7 +233,7 @@ class Paper(models.Model):
 
     def __unicode__(self):
         return 'Paper<%i: %s>' % ( self.id, ' '.join( [str(self.doi), str(self.title), str(self.authors.all())] ) )
-    
+
     def pretty_string(self):
         return '['+ ', '.join( [ author.name for author in self.get_authors_in_order() ] )  +'] '+ self.title
 
@@ -292,7 +292,7 @@ class Playlist(models.Model):
     papers = models.ManyToManyField(Paper)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
-    
+
     def get_papers_in_order(self):
         from django.db import connection
         cursor = connection.cursor()
