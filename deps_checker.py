@@ -50,14 +50,7 @@ except:
     print '\n'.join(cmds)
     sys.exit()
 
-try:
-  import deseb
-except:
-  #traceback.print_exc()
-  print 'could not import deseb [http://code.google.com/p/deseb/].  try running (from "%s"):' % RUN_FROM_DIR
-  print '\tsvn checkout http://deseb.googlecode.com/svn/trunk/src/deseb'
-  sys.exit()
-  
+
 try:
   import cairo
 except:

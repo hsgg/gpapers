@@ -1,6 +1,5 @@
 # Django settings for gPapers project.
 import os
-import deseb
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG

@@ -26,7 +26,6 @@ import BeautifulSoup
 import deps_checker
 import sqlite3
 from django.template import defaultfilters
-import deseb
 import cairo
 import poppler
 
@@ -2900,11 +2899,6 @@ class PreferencesGUI:
 def init_db():
     import django.core.management.commands.syncdb
     django.core.management.commands.syncdb.Command().handle_noargs(interactive=False)
-    for app in models.get_apps():
-        app_name = app.__name__.split('.')[-2]
-        if app_name=='gPapers':
-            import deseb.schema_evolution
-            deseb.schema_evolution.evolvedb(app, interactive=False, managed_upgrade_only=True)
 
 
 if __name__ == "__main__":
